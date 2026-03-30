@@ -1,0 +1,12 @@
+{
+  "dossier_hash": "a0506788fe0ad7d5b6d03f525ec5d83eb5c6a8b77fa84145e895ceeac7a6d338",
+  "generated_at_utc": "2026-03-30T21:00:06.735749+00:00",
+  "engine_version": "35.1.0-UNIFIED-SOVEREIGN",
+  "policy_version": "2026.Q2.TEST",
+  "result_overview": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0
+  },
+  "signature": "R0Mp7k9IYnU8gCuVWMPN30j+VSVk7HH+wNaDgN/OKMTwztZx05whJKWOPZi5gglW6dTytOSUZhn06pgb+FdjitxxH877xFNTSchQUz81sxIKVepw6FuX53Z59Dt8zeoreEpux2rKjOqzhi6DrFy9zS7849qlEK2tSqcwpZlaRKeAgK6XN6yxMsHT6KrQQBU9VMR9AfmSsfGo6BKEZAI1cxo/IibSR2rGvVtQuhnpXiw6M4yTRAWGvePbqcV0zcDsGhvUVp0l3wRxC+t1DzpPgDJuUzEt3gVEqgmPx8gBPruoz7iMU8lGRO/R+IYvegQAXZxE0Rud67KBcCBq0IPFBg=="
+}

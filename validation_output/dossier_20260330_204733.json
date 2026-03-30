@@ -1,0 +1,81 @@
+{
+  "dossier_type": "validation_dossier",
+  "generated_at_utc": "2026-03-30T18:47:33.246477+00:00",
+  "engine_version": "35.1.0-UNIFIED-SOVEREIGN",
+  "policy_version": "2026.Q2.TEST",
+  "summary_file": "validation_output/summary_20260330_204733.json",
+  "summary": {
+    "suite_name": "smoke_suite",
+    "started_at_utc": "2026-03-30T18:47:33.229466+00:00",
+    "finished_at_utc": "2026-03-30T18:47:33.245604+00:00",
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "results": [
+      {
+        "test_name": "valid_fixture",
+        "passed": true,
+        "checked_at_utc": "2026-03-30T18:47:33.245404+00:00",
+        "details": {
+          "status": "CERTIFIED",
+          "top_level_keys": [
+            "audit",
+            "case_id",
+            "dossier",
+            "gate",
+            "release_event",
+            "replay",
+            "status",
+            "verified_event"
+          ],
+          "result_hash": "b765718083d03ea719d09f4e2f5441eb4b3cdf859716e50adbc31b2c8d6a1dfb"
+        }
+      },
+      {
+        "test_name": "invalid_consent_fixture",
+        "passed": true,
+        "checked_at_utc": "2026-03-30T18:47:33.245425+00:00",
+        "details": {
+          "status": "REJECTED",
+          "top_level_keys": [
+            "case_id",
+            "reason",
+            "status"
+          ],
+          "result_hash": "26c5a958957405165d5b62043cb6ad74cb7f714a90260a6e3118b925d09b6e82"
+        }
+      },
+      {
+        "test_name": "invalid_data_fixture",
+        "passed": true,
+        "checked_at_utc": "2026-03-30T18:47:33.245601+00:00",
+        "details": {
+          "status": "REJECTED",
+          "top_level_keys": [
+            "case_id",
+            "original_result",
+            "reason",
+            "status"
+          ],
+          "result_hash": "c88354f8e3db7e8eb25e217ce22cf78505c2f9ad222f1fc801359579faf6ea27"
+        }
+      }
+    ],
+    "summary_hash": "66d703e3ad0e6441a0082f1b3130f7c35f8e761230415864498779c9fd8a34fc"
+  },
+  "previous_hash": "bb5c2d41e3c97184540faf831d79656bafc05b99898be89e004dcd35e53738b0",
+  "regulatory_context": {
+    "rules_version": "1.0.0",
+    "rules_hash": "aef0004ea16adb5491be9c56f3d1c973b644bfefb9a71f903c5f3f71235053a7"
+  },
+  "execution_path": {
+    "pipeline_id": "06-14-22-30-46-61"
+  },
+  "result_overview": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0
+  },
+  "dossier_hash": "e021caea6b3a1410662fd72239d26a4e41f89045671ae346889fe51c36b9db65",
+  "signature": "fafr5BuU0JQrv5s+AkepT/skrN4xIqhG4cDYCT+M87HyQHWN0WxQp9GgYL0W3cHGgcrskorbB47lKdc8D8ngdDiYF7CkVpEl2D5MVkBPeQ8SITCjkCjrQmFs6nQPZ4hpWd+61MYMfgxHOKtIyFNxI04IXuZuXV4qoZPVY5XQUMD87QnOuvgNGTcRVsmCTUGvwBhXZBAFY/eC9MTIGWRCK5EPvej9paaJA0SKE+tKJSjowPA51Owng/47+fKh0gJ8IAgfvFsCZc53i7EZGB7hxYXJ22wGrqVCHeiCZAAqOri8fCgBd1y1YShV19xOBytifi8YQQzFMHLUE6i8Y1ssOA=="
+}

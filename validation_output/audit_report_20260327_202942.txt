@@ -1,0 +1,42 @@
+====================================
+AUDIT REPORT
+====================================
+File dossier: validation_output/dossier_20260327_202942.json
+Dossier type: validation_dossier
+Generated at: 2026-03-27T19:29:42.088703+00:00
+Engine version: 35.1.0-UNIFIED-SOVEREIGN
+Policy version: 2026.Q2.TEST
+Previous hash: None
+Dossier hash: 6ea02587d2e53ee8796a872ec55a392175f448b20ba245c790e40b9481b56819
+Signature: sig::6ea02587d2e53ee8796a872ec55a392175f448b20ba245c790e40b9481b56819
+
+SUMMARY OVERVIEW
+Suite name: smoke_suite
+Started at: 2026-03-27T19:29:42.069242+00:00
+Finished at: 2026-03-27T19:29:42.088151+00:00
+Total tests: 3
+Passed: 3
+Failed: 0
+Summary hash: 504d4368abda9f0cebeb6e4c6a0f681efe198c1ceb8535d143ba9d231e9cbd24
+
+TEST RESULTS
+1. valid_fixture
+   passed: True
+   status: CERTIFIED
+   checked_at: 2026-03-27T19:29:42.087952+00:00
+   result_hash: b0df911d6d0fc8642696af0defa468fa7dd4887ef128edfb9dc30dfea209f691
+
+2. invalid_consent_fixture
+   passed: True
+   status: REJECTED
+   checked_at: 2026-03-27T19:29:42.087973+00:00
+   result_hash: e4fa98bcda0c8f469e398f59e0dfd646ab411be9dfa531e80353a81a94773b6c
+
+3. invalid_data_fixture
+   passed: True
+   status: REJECTED
+   checked_at: 2026-03-27T19:29:42.088149+00:00
+   result_hash: 15bd10bbdf702ecc42d1c2521cfb40ce2c57c19ca6a391a34be6310a192bde03
+
+FINAL ASSESSMENT
+PASS - validation suite completed with zero failed tests

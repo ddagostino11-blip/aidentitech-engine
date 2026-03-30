@@ -1,0 +1,59 @@
+{
+  "suite_name": "smoke_suite",
+  "started_at_utc": "2026-03-30T19:50:52.810187+00:00",
+  "finished_at_utc": "2026-03-30T19:50:52.829620+00:00",
+  "total": 3,
+  "passed": 3,
+  "failed": 0,
+  "results": [
+    {
+      "test_name": "valid_fixture",
+      "passed": true,
+      "checked_at_utc": "2026-03-30T19:50:52.829415+00:00",
+      "details": {
+        "status": "CERTIFIED",
+        "top_level_keys": [
+          "audit",
+          "case_id",
+          "dossier",
+          "gate",
+          "release_event",
+          "replay",
+          "status",
+          "verified_event"
+        ],
+        "result_hash": "72c36a294f0d254f6b39354caebfa6a4d920d30790186c0fdf93ff56a2d8edb9"
+      }
+    },
+    {
+      "test_name": "invalid_consent_fixture",
+      "passed": true,
+      "checked_at_utc": "2026-03-30T19:50:52.829437+00:00",
+      "details": {
+        "status": "REJECTED",
+        "top_level_keys": [
+          "case_id",
+          "reason",
+          "status"
+        ],
+        "result_hash": "e7760938449bf1a9d63ed633fa78de368f48856cf329de81dbadbd87acc5aad9"
+      }
+    },
+    {
+      "test_name": "invalid_data_fixture",
+      "passed": true,
+      "checked_at_utc": "2026-03-30T19:50:52.829617+00:00",
+      "details": {
+        "status": "REJECTED",
+        "top_level_keys": [
+          "case_id",
+          "original_result",
+          "reason",
+          "status"
+        ],
+        "result_hash": "417fe1ac9b63895de52b660d359f02578d44044cd102a15ede5f7e0cf270d643"
+      }
+    }
+  ],
+  "summary_hash": "92b1e7d27ca4c84d97c2efed086b735a5ea3577b5f84431ee7956ed50f7774c3"
+}

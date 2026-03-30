@@ -1,0 +1,9 @@
+{
+  "name": "pharma_basic",
+  "version": "1.0.0",
+  "rules": {
+    "glucose_range": { "min": 70, "max": 110 },
+    "pressure_systolic_max": 140,
+    "allowed_units": ["mg/dL"]
+  }
+}
