@@ -1,0 +1,88 @@
+{
+  "dossier_type": "validation_dossier",
+  "generated_at_utc": "2026-03-31T15:35:46.100928+00:00",
+  "engine_version": "35.1.0-UNIFIED-SOVEREIGN",
+  "policy_version": "2026.Q2.TEST",
+  "summary_file": "validation_output/summary_20260331_173546.json",
+  "summary": {
+    "suite_name": "smoke_suite",
+    "started_at_utc": "2026-03-31T15:35:46.079836+00:00",
+    "finished_at_utc": "2026-03-31T15:35:46.099616+00:00",
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "results": [
+      {
+        "test_name": "valid_fixture",
+        "passed": true,
+        "checked_at_utc": "2026-03-31T15:35:46.099416+00:00",
+        "details": {
+          "status": "CERTIFIED",
+          "top_level_keys": [
+            "audit",
+            "case_id",
+            "dossier",
+            "gate",
+            "release_event",
+            "replay",
+            "status",
+            "verified_event"
+          ],
+          "result_hash": "0365dfd1ed3a3564091026a54c2306ee1232d74715408c6b370aa9fe2e305852"
+        }
+      },
+      {
+        "test_name": "invalid_consent_fixture",
+        "passed": true,
+        "checked_at_utc": "2026-03-31T15:35:46.099437+00:00",
+        "details": {
+          "status": "REJECTED",
+          "top_level_keys": [
+            "case_id",
+            "reason",
+            "status"
+          ],
+          "result_hash": "5fb866c42f13f3427a2b4e03b3c3054885591407c3c4e2c0126a763f2f5b67da"
+        }
+      },
+      {
+        "test_name": "invalid_data_fixture",
+        "passed": true,
+        "checked_at_utc": "2026-03-31T15:35:46.099614+00:00",
+        "details": {
+          "status": "REJECTED",
+          "top_level_keys": [
+            "case_id",
+            "original_result",
+            "reason",
+            "status"
+          ],
+          "result_hash": "ab9ce037b746c603f324c1e0dc4b2f516730ee2fad1a3d38618146b469928b5d"
+        }
+      }
+    ],
+    "summary_hash": "3bd553f07e16cf076928c81b1766b12a054b722c5c71538d612909b4ac835f18"
+  },
+  "previous_hash": "acd2b6bc632fe91a5998ba7cec3d8f16f3fe36590f50eae9cfcab31e60ca4f9f",
+  "risk_decision": {
+    "risk_score": 0,
+    "status": "CERTIFIED",
+    "hard_block": false,
+    "reasons": [],
+    "recommended_action": "EMIT_DOSSIER"
+  },
+  "regulatory_context": {
+    "rules_version": "1.0.0",
+    "rules_hash": "aef0004ea16adb5491be9c56f3d1c973b644bfefb9a71f903c5f3f71235053a7"
+  },
+  "execution_path": {
+    "pipeline_id": "06-14-22-30-46-61"
+  },
+  "result_overview": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0
+  },
+  "dossier_hash": "4b022ea3d6babb0a729b7c62dea07b1b6511bb015b150a309daa57d6485cb71d",
+  "signature": "QXCnrJjn63ibe86WzoG58B+WDJwx1MeId9xuVKJRIvAH8VNRJsR1KN5ULzYOUGx3JBaxqLv2ERzIKgGQk/y210Oyn/sXNU49pLaoACDSXVwt4vf8Fx9MW1nQWvGb3t1pksAmPa9F+OgqDHaLAqVbaBUNDRInkOHqzF3xzCqp2OKDJh4KDPktByhmzAsC8yf29jg2U3WTuQJttFxBJ509DKPdpVTr38K6+GNk42HdkKPEjFy3/DMWXWlsmpMHmCh5O+Rm2qGkrzlvfiSBkNSeANnCFt9+u+eV4VsycNvY54YW/vP2WMPwMPVGKWV26pJFPZl57hcKqUuRnOTZLrvCSg=="
+}

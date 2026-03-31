@@ -1,54 +1,44 @@
+from pathlib import Path
 import json
 import hashlib
-from pathlib import Path
+import sys
 
-LEDGER_FILE = "ledger.jsonl"
+def verify_ledger(ledger_file="ledger.jsonl"):
+    if not Path(ledger_file).exists():
+        print("Ledger assente (prima esecuzione)")
+        return True
 
-def compute_entry_hash(entry: dict) -> str:
-    data = dict(entry)
-    data.pop("entry_hash", None)
-    entry_string = json.dumps(data, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(entry_string.encode("utf-8")).hexdigest()
-
-def verify_ledger(path: str = LEDGER_FILE):
-    ledger_path = Path(path)
-
-    if not ledger_path.exists():
-        print("Ledger non trovato")
-        return
-
-    with open(ledger_path, "r", encoding="utf-8") as f:
-        lines = [line.strip() for line in f if line.strip()]
-
-    if not lines:
-        print("Ledger vuoto")
-        return
+    with open(ledger_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
 
     prev_hash = None
 
-    print("\n=== LEDGER VERIFICATION ===\n")
+    for i, line in enumerate(lines, start=1):
+        try:
+            entry = json.loads(line)
+        except Exception:
+            print(f"❌ JSON NON VALIDO (entry {i})")
+            return False
 
-    for idx, line in enumerate(lines, start=1):
-        entry = json.loads(line)
+        entry_copy = dict(entry)
+        stored_hash = entry_copy.pop("entry_hash", None)
 
-        stored_entry_hash = entry.get("entry_hash")
-        stored_prev_hash = entry.get("prev_entry_hash")
-        recalculated_hash = compute_entry_hash(entry)
+        recalculated = hashlib.sha256(
+            json.dumps(entry_copy, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
 
-        print(f"Entry {idx}")
+        if stored_hash != recalculated:
+            print(f"❌ ENTRY HASH NON VALIDO (entry {i})")
+            return False
 
-        if stored_entry_hash != recalculated_hash:
-            print("❌ ENTRY HASH NON VALIDO")
-            return
+        if prev_hash is not None and entry.get("prev_entry_hash") != prev_hash:
+            print(f"❌ CHAIN NON VALIDA (entry {i})")
+            return False
 
-        if stored_prev_hash != prev_hash:
-            print("❌ LEDGER CHAIN BROKEN")
-            return
+        prev_hash = stored_hash
 
-        print("✔ OK")
-        prev_hash = stored_entry_hash
-
-    print("\n✔ LEDGER VALIDO E INTEGRO")
+    print("✅ Ledger integro")
+    return True
 
 if __name__ == "__main__":
-    verify_ledger()
+    sys.exit(0 if verify_ledger() else 1)

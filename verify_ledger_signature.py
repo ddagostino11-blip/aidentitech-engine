@@ -1,55 +1,44 @@
-import hashlib
-import base64
+from pathlib import Path
 import subprocess
-import tempfile
-
-
-def verify_signature_with_openssl(digest_hex: str, signature_b64: str, public_key_path: str = "public_key.pem") -> bool:
-    import base64
-    import subprocess
-    import tempfile
-
-    signature_bytes = base64.b64decode(signature_b64)
-
-    with tempfile.NamedTemporaryFile(delete=False) as sig_file:
-        sig_file.write(signature_bytes)
-        sig_path = sig_file.name
-
-    try:
-        result = subprocess.run(
-            ["openssl", "dgst", "-sha256", "-verify", public_key_path, "-signature", sig_path],
-            input=digest_hex,
-            capture_output=True,
-            text=True,
-        )
-        return "Verified OK" in result.stdout
-    finally:
-        pass
+import sys
 
 def main():
-    print("\n=== LEDGER SIGNATURE VERIFICATION ===\n")
+    ledger_file = "ledger.jsonl"
+    signature_file = "ledger.sig"
+    public_key = "public_key.pem"
 
-    with open("ledger.jsonl", "rb") as lf:
-        ledger_bytes = lf.read()
+    if not Path(ledger_file).exists():
+        print("❌ Ledger non trovato")
+        return False
 
-    recalculated_hash = hashlib.sha256(ledger_bytes).hexdigest()
+    if not Path(signature_file).exists():
+        print("❌ Firma ledger non trovata")
+        return False
 
-    with open("ledger.sig", "r", encoding="utf-8") as sf:
-        signature_b64 = sf.read().strip()
+    if not Path(public_key).exists():
+        print("❌ Chiave pubblica non trovata")
+        return False
 
-    print("Ledger hash:", recalculated_hash)
+    result = subprocess.run([
+        "openssl", "dgst", "-sha256",
+        "-verify", public_key,
+        "-signature", signature_file,
+        ledger_file
+    ], capture_output=True, text=True)
 
-    valid = verify_signature_with_openssl(
-        recalculated_hash,
-        signature_b64,
-        "public_key.pem"
-    )
+    out = (result.stdout or "").strip()
+    if out:
+        print(out)
 
-    if valid:
-        print("✔ FIRMA LEDGER VALIDA")
-    else:
-        print("❌ FIRMA LEDGER NON VALIDA")
+    if result.returncode == 0:
+        print("✅ FIRMA LEDGER VALIDA")
+        return True
 
+    print("❌ FIRMA LEDGER NON VALIDA")
+    err = (result.stderr or "").strip()
+    if err:
+        print(err)
+    return False
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)

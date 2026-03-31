@@ -1,8 +1,8 @@
 {
-  "generated_at_utc": "2026-03-30T22:03:42.550518+00:00",
-  "dossier_file": "validation_output/dossier_20260331_000342.json",
-  "summary_file": "validation_output/summary_20260331_000342.json",
-  "dossier_hash": "f7e6cac056497d91036251c53daa7fdb952565a13d81bfcfe2154c277e13af99",
-  "fiscal_file": "commercialisti_inbox/fiscale_20260331_000342.json",
+  "generated_at_utc": "2026-03-31T15:44:32.166948+00:00",
+  "dossier_file": "validation_output/dossier_20260331_174432.json",
+  "summary_file": "validation_output/summary_20260331_174432.json",
+  "dossier_hash": "5c39957690aa4c0d758ed6a94d0d604637dada4c41b77339dab527b392dc4cf9",
+  "fiscal_file": "commercialisti_inbox/fiscale_20260331_174432.json",
   "verification_status": "OK"
 }

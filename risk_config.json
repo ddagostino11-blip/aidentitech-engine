@@ -1,0 +1,20 @@
+{
+  "weights": {
+    "missing_data": 100,
+    "regulatory_ambiguity": 50,
+    "fiscal_inconsistency": 40,
+    "market_mismatch": 30,
+    "low_confidence_source": 20,
+    "legal_review_required": 35,
+    "policy_transition_active": 25,
+    "signature_or_timestamp_missing": 100
+  },
+  "hard_block_flags": [
+    "missing_data",
+    "signature_or_timestamp_missing"
+  ],
+  "thresholds": {
+    "certified_max": 20,
+    "risk_max": 60
+  }
+}

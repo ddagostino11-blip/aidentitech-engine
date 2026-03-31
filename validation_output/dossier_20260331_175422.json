@@ -1,0 +1,25 @@
+{
+  "dossier_type": "MASTER_PHARMA",
+  "generated_at_utc": "2026-03-31T15:54:22.536696+00:00",
+  "engine_version": "4.0",
+  "policy_version": "1.0",
+  "summary_file": "validation_output/summary.json",
+  "summary": {},
+  "previous_hash": null,
+  "regulatory_context": {
+    "rules_version": "1.0",
+    "rules_hash": "abc123"
+  },
+  "execution_path": {
+    "pipeline_id": "06-14-22-30-46-61"
+  },
+  "risk_decision": {
+    "risk_score": 0,
+    "status": "CERTIFIED",
+    "hard_block": false,
+    "reasons": [],
+    "recommended_action": "EMIT_DOSSIER"
+  },
+  "dossier_hash": "5870136e9ccaf76bdaeb394d4d5904d9d2896cc21a6ceb9f888125f93eded147",
+  "signature": "fbY8lhJJo+K5aBS3RKZAhV6T1kmR+1uAt/tiw3v2o27JnwxkyloUr5ElK4uUXcRYhkN3sOk2yswMfcHst9ncsyfCXO1/Ve4lc66uK6NxYrCe06T9FPSXuSF6VXWGMIpF6E7SoAUhhqNeqY3Um7z1bNdzBz4S96Ov5t9NLu3FOhqeGvKe6Vm6SvItgUNDe9nJOLrHXBzqXWnec7k0uoU2EHap3NI7+T88elrO308zUr69LCsSRrtuB0/InLKvXLI0DWQ+je6wXPUORX6r3iWEZTGypS679A+ErPLVACl14H5GyWu3gV/dXWqUjH+I3aAg7V0WW5GT8LZDtHUOGZy9ew=="
+}

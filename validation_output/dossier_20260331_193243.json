@@ -1,0 +1,24 @@
+{
+  "dossier_type": "MASTER_PHARMA",
+  "generated_at_utc": "2026-03-31T17:32:43.429831+00:00",
+  "engine_version": "4.0",
+  "policy_version": "1.0",
+  "summary_file": "validation_output/summary_20260331_193243.json",
+  "summary": {},
+  "previous_hash": "GENESIS",
+  "regulatory_context": {
+    "rules_version": "1.0",
+    "rules_hash": "abc123"
+  },
+  "execution_path": {
+    "pipeline_id": "06-14-22-30-46-61"
+  },
+  "risk_decision": {
+    "risk_score": 0,
+    "status": "CERTIFIED",
+    "hard_block": false,
+    "reasons": [],
+    "recommended_action": "EMIT_DOSSIER"
+  },
+  "dossier_hash": "83d337f3b69a23202174b6c8681296021118132503cd19a27b962ab7d4349a85"
+}

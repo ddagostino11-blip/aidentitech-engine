@@ -29,6 +29,7 @@ def extract_core_dossier(dossier):
         "previous_hash": dossier.get("previous_hash"),
         "regulatory_context": dossier.get("regulatory_context"),
         "execution_path": dossier.get("execution_path"),
+        "risk_decision": dossier.get("risk_decision"),
     }
 
 def verify_signature(dossier_file, public_key="public_key.pem"):
