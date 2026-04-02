@@ -91,3 +91,13 @@ Script:
 
 ```bash
 python3 run_validation.py
+
+
+---
+
+## 🚀 Comandi operativi (stato stabile)
+
+Eseguire sempre uno alla volta:
+
+```bash
+python3 run_validation.py
