@@ -2,15 +2,14 @@ import argparse
 import importlib
 from pathlib import Path
 
-from cli.run_validation import run_validation
 from core.verify_ledger import verify_ledger
 from core.verify_ledger_signature import main as verify_signature
 from core.config_loader import load_config
+from services.validation_service import execute_validation
 
 
 GREEN = "\033[92m"
 RED = "\033[91m"
-BLUE = "\033[94m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
@@ -28,7 +27,7 @@ def section(title: str):
     print(f"{BOLD}=== {title} ==={RESET}")
 
 
-def load_module_config(module_name):
+def load_module_config(module_name: str):
     try:
         module = importlib.import_module(f"modules.{module_name}.config")
         return getattr(module, f"get_{module_name}_config")()
@@ -136,7 +135,7 @@ def main():
     command = args.command.lower()
 
     if command == "validate":
-        run_validation(config, module_config, verify_ledger, verify_signature)
+        execute_validation(module_config)
     elif command == "verify":
         run_verify(config)
     elif command == "status":
