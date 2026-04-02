@@ -1,8 +1,0 @@
-{
-  "risk_score": 50,
-  "reasons": [
-    "regulatory_ambiguity"
-  ],
-  "recommended_action": "GENERATE_RISK_REPORT",
-  "timestamp": "2026-03-31T17:01:33.470158"
-}

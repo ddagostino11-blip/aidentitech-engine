@@ -8,6 +8,7 @@ from verify_ledger import verify_ledger
 from verify_ledger_signature import main as verify_ledger_signature_main
 
 ledger_file = "ledger.jsonl"
+audit_log_file = "runtime/logs/audit_log.jsonl"
 
 def sign_file_with_openssl(file_path: str, private_key_path: str, output_sig_path: str):
     subprocess.run([
@@ -17,21 +18,44 @@ def sign_file_with_openssl(file_path: str, private_key_path: str, output_sig_pat
         file_path
     ], check=True)
 
+
+def append_audit_log(entry: dict, audit_path: str = audit_log_file):
+    with open(audit_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+# =========================
+# PRE-FLIGHT SECURITY CHECK
+# =========================
 print("\n=== PREFLIGHT SECURITY CHECK ===")
 
-if not Path(ledger_file).exists():
+preflight_ledger_ok = True
+preflight_signature_ok = True
+first_execution = not Path(ledger_file).exists()
+
+if first_execution:
     print("Ledger assente: prima esecuzione")
 else:
     print("Verifica integrità ledger in corso...")
-    if not verify_ledger(ledger_file):
+    preflight_ledger_ok = verify_ledger(ledger_file)
+    if not preflight_ledger_ok:
         print("❌ BLOCCO SICUREZZA: ledger corrotto")
         raise SystemExit(1)
 
+    if not Path("ledger.sig").exists():
+        print("❌ BLOCCO SICUREZZA: firma ledger mancante")
+        raise SystemExit(1)
+
     print("Verifica firma ledger...")
-    if not verify_ledger_signature_main():
+    preflight_signature_ok = verify_ledger_signature_main()
+    if not preflight_signature_ok:
         print("❌ BLOCCO SICUREZZA: firma ledger NON valida")
         raise SystemExit(1)
 
+
+# =========================
+# RISK ENGINE
+# =========================
 risk_result = {
     "risk_score": 0,
     "status": "CERTIFIED",
@@ -47,14 +71,21 @@ print(f"Hard block: {risk_result['hard_block']}")
 print(f"Reasons: {risk_result['reasons']}")
 print(f"Recommended action: {risk_result['recommended_action']}")
 
-Path("validation_output").mkdir(exist_ok=True)
-Path("commercialisti_inbox").mkdir(exist_ok=True)
+
+# =========================
+# PREPARAZIONE OUTPUT
+# =========================
+Path("runtime/artifacts/validation_output").mkdir(parents=True, exist_ok=True)
+Path("runtime/artifacts/commercialisti_inbox").mkdir(parents=True, exist_ok=True)
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-dossier_file = f"validation_output/dossier_{timestamp}.json"
-summary_file = f"validation_output/summary_{timestamp}.json"
-fiscal_file = f"commercialisti_inbox/fiscale_{timestamp}.json"
+dossier_file = f"runtime/artifacts/validation_output/dossier_{timestamp}.json"
+summary_file = f"runtime/artifacts/validation_output/summary_{timestamp}.json"
+fiscal_file = f"runtime/artifacts/commercialisti_inbox/fiscale_{timestamp}.json"
 
+# =========================
+# CHAIN CONTEXT
+# =========================
 previous_hash = "GENESIS"
 prev_entry_hash = None
 
@@ -66,6 +97,10 @@ if Path(ledger_file).exists():
             previous_hash = last_entry.get("dossier_hash", "GENESIS")
             prev_entry_hash = last_entry.get("entry_hash")
 
+
+# =========================
+# DOSSIER
+# =========================
 core_dossier = {
     "dossier_type": "MASTER_PHARMA",
     "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -108,6 +143,10 @@ with open(fiscal_file, "w", encoding="utf-8") as f:
 
 print(f"Dossier salvato in: {dossier_file}")
 
+
+# =========================
+# LEDGER ENTRY
+# =========================
 ledger_entry = {
     "logged_at_utc": datetime.now(timezone.utc).isoformat(),
     "dossier_file": dossier_file,
@@ -132,7 +171,45 @@ with open(ledger_file, "a", encoding="utf-8") as lf:
 
 print("Ledger aggiornato")
 
+
+# =========================
+# FIRMA LEDGER
+# =========================
 sign_file_with_openssl(ledger_file, "private_key.pem", "ledger.sig")
 print("Ledger firmato in: ledger.sig")
+
+
+# =========================
+# POST-VERIFY
+# =========================
+post_ledger_ok = verify_ledger(ledger_file)
+post_signature_ok = verify_ledger_signature_main()
+
+# =========================
+# AUDIT LOG
+# =========================
+audit_entry = {
+    "event_type": "validation_run",
+    "run_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    "first_execution": first_execution,
+    "dossier_file": dossier_file,
+    "summary_file": summary_file,
+    "fiscal_file": fiscal_file,
+    "dossier_hash": dossier_hash,
+    "ledger_file": ledger_file,
+    "ledger_signature_file": "ledger.sig",
+    "preflight_ledger_ok": preflight_ledger_ok,
+    "preflight_signature_ok": preflight_signature_ok,
+    "post_ledger_ok": post_ledger_ok,
+    "post_signature_ok": post_signature_ok,
+    "risk_score": risk_result["risk_score"],
+    "risk_status": risk_result["status"],
+    "risk_hard_block": risk_result["hard_block"],
+    "risk_reasons": risk_result["reasons"],
+    "recommended_action": risk_result["recommended_action"]
+}
+
+append_audit_log(audit_entry)
+print(f"Audit log aggiornato in: {audit_log_file}")
 
 print("\n=== COMPLETATO ===")
