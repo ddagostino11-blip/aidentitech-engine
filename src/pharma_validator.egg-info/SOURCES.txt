@@ -1,7 +1,0 @@
-README.md
-setup.py
-src/pharma_validator.egg-info/PKG-INFO
-src/pharma_validator.egg-info/SOURCES.txt
-src/pharma_validator.egg-info/dependency_links.txt
-src/pharma_validator.egg-info/entry_points.txt
-src/pharma_validator.egg-info/top_level.txt

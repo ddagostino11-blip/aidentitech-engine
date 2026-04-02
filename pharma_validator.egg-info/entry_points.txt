@@ -1,2 +1,0 @@
-[console_scripts]
-pharma = src.cli.run_validation:main
