@@ -8,7 +8,7 @@ setup(
     install_requires=[],
     entry_points={
         "console_scripts": [
-            "pharma=cli.run_validation:main",
+            "pharma=run:main",
         ],
     },
 )
