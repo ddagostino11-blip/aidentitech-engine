@@ -1,0 +1,2 @@
+[console_scripts]
+pharma = cli.run_validation:main

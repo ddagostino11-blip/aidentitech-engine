@@ -4,9 +4,9 @@ import json
 import hashlib
 import subprocess
 
-from src.core.verify_ledger import verify_ledger
-from src.core.verify_ledger_signature import main as verify_ledger_signature_main
-from src.core.config_loader import load_config
+from core.verify_ledger import verify_ledger
+from core.verify_ledger_signature import main as verify_ledger_signature_main
+from core.config_loader import load_config
 
 config = load_config()
 

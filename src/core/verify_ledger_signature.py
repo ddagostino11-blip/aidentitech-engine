@@ -1,8 +1,7 @@
 from pathlib import Path
 import subprocess
 
-from src.core.config_loader import load_config
-
+from core.config_loader import load_config
 
 def main():
     config = load_config()
