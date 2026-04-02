@@ -1,13 +1,13 @@
-import sys
+import argparse
+import importlib
 from pathlib import Path
 
-from cli.run_validation import main as validate_main
+from cli.run_validation import run_validation
 from core.verify_ledger import verify_ledger
 from core.verify_ledger_signature import main as verify_signature
 from core.config_loader import load_config
 
 
-# ===== COLORS =====
 GREEN = "\033[92m"
 RED = "\033[91m"
 BLUE = "\033[94m"
@@ -15,7 +15,6 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 
-# ===== HELPERS =====
 def ok(text: str):
     print(f"{GREEN}✔ {text}{RESET}")
 
@@ -24,19 +23,24 @@ def fail(text: str):
     print(f"{RED}✘ {text}{RESET}")
 
 
-def info(text: str):
-    print(f"{BLUE}{text}{RESET}")
-
-
 def section(title: str):
     print()
     print(f"{BOLD}=== {title} ==={RESET}")
 
 
-# ===== COMMANDS =====
-def show_status(config: dict):
-    section("STATUS")
+def load_module_config(module_name):
+    try:
+        module = importlib.import_module(f"modules.{module_name}.config")
+        return getattr(module, f"get_{module_name}_config")()
+    except Exception as e:
+        print(f"❌ Errore caricamento modulo '{module_name}': {e}")
+        return None
 
+
+def show_status(config: dict, module_config: dict):
+    section("STATUS")
+    print(f"Module: {module_config['module_name']}")
+    print(f"Dossier type: {module_config['dossier_type']}")
     print(f"Ledger file: {config['paths']['ledger_file']}")
     print(f"Ledger signature: {config['paths']['ledger_signature_file']}")
     print(f"Audit log: {config['paths']['audit_log_file']}")
@@ -62,17 +66,10 @@ def show_status(config: dict):
         fail("audit log assente")
 
 
-def run_verify(config: dict, verbose: bool = False):
+def run_verify(config: dict):
     section("VERIFY")
-
-    if verbose:
-        # modalità completa (pipeline originale)
-        ledger_ok = verify_ledger(config["paths"]["ledger_file"])
-        signature_ok = verify_signature()
-    else:
-        # modalità compatta
-        ledger_ok = verify_ledger(config["paths"]["ledger_file"])
-        signature_ok = verify_signature()
+    ledger_ok = verify_ledger(config["paths"]["ledger_file"])
+    signature_ok = verify_signature()
 
     print()
 
@@ -104,7 +101,7 @@ def show_audit(config: dict):
     lines = audit_path.read_text(encoding="utf-8").splitlines()
 
     if not lines:
-        info("Audit log vuoto")
+        print("Audit log vuoto")
         return
 
     ok("Ultima entry audit")
@@ -112,42 +109,42 @@ def show_audit(config: dict):
 
 
 def show_help():
-    section("PHARMA CLI")
-
+    section("AIDENTITECH ENGINE CLI")
     print("Uso:")
-    print("  pharma validate")
-    print("  pharma verify [--verbose]")
-    print("  pharma status")
+    print("  pharma validate --module pharma")
+    print("  pharma validate --module energy")
+    print("  pharma validate --module food")
+    print("  pharma status --module pharma")
+    print("  pharma verify")
     print("  pharma audit")
     print("  pharma help")
 
 
-# ===== MAIN =====
 def main():
-    config = load_config()
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("command", nargs="?", default="help")
+    parser.add_argument("--module", default="pharma")
+    args = parser.parse_args()
 
-    if len(sys.argv) < 2:
-        show_help()
+    config = load_config()
+    module_config = load_module_config(args.module)
+
+    if not module_config:
+        print("❌ Config modulo non trovata")
         return
 
-    command = sys.argv[1].lower()
-    verbose = "--verbose" in sys.argv
+    command = args.command.lower()
 
     if command == "validate":
-        validate_main()
-
+        run_validation(config, module_config, verify_ledger, verify_signature)
     elif command == "verify":
-        run_verify(config, verbose=verbose)
-
+        run_verify(config)
     elif command == "status":
-        show_status(config)
-
+        show_status(config, module_config)
     elif command == "audit":
         show_audit(config)
-
     elif command == "help":
         show_help()
-
     else:
         fail(f"Comando sconosciuto: {command}")
         show_help()

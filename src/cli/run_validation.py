@@ -4,11 +4,6 @@ import json
 import hashlib
 import subprocess
 
-from core.verify_ledger import verify_ledger
-from core.verify_ledger_signature import main as verify_ledger_signature_main
-from core.config_loader import load_config
-from modules.pharma.config import get_pharma_config
-
 
 def sign_file_with_openssl(file_path: str, private_key_path: str, output_sig_path: str):
     subprocess.run([
@@ -24,10 +19,7 @@ def append_audit_log(entry: dict, audit_path: str):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def main():
-    config = load_config()
-    module_config = get_pharma_config()
-
+def run_validation(config: dict, module_config: dict, verify_ledger, verify_ledger_signature_main):
     ledger_file = config["paths"]["ledger_file"]
     audit_log_file = config["paths"]["audit_log_file"]
     ledger_signature_file = config["paths"]["ledger_signature_file"]
@@ -191,7 +183,3 @@ def main():
     print(f"Audit log aggiornato in: {audit_log_file}")
 
     print("\n=== COMPLETATO ===")
-
-
-if __name__ == "__main__":
-    main()
