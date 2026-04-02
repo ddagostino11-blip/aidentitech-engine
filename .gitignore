@@ -5,14 +5,16 @@ __pycache__/
 # Virtual env
 venv/
 
-# Output generati
+# Runtime / generated output
 validation_output/
+commercialisti_inbox/
 timestamps/
 logs/
+client_proof/
 
-# Ledger runtime (opzionale)
+# Ledger runtime
 ledger.jsonl
 ledger.sig
 
-# OS
+# macOS
 .DS_Store
