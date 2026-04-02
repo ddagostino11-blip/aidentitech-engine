@@ -1,0 +1,27 @@
+{
+  "paths": {
+    "ledger_file": "ledger.jsonl",
+    "ledger_signature_file": "ledger.sig",
+    "audit_log_file": "runtime/logs/audit_log.jsonl",
+    "validation_output_dir": "runtime/artifacts/validation_output",
+    "fiscal_output_dir": "runtime/artifacts/commercialisti_inbox"
+  },
+  "keys": {
+    "private_key_file": "private_key.pem",
+    "public_key_file": "public_key.pem"
+  },
+  "engine": {
+    "engine_version": "4.0",
+    "policy_version": "1.0",
+    "rules_version": "1.0",
+    "rules_hash": "abc123",
+    "pipeline_id": "06-14-22-30-46-61"
+  },
+  "risk_defaults": {
+    "risk_score": 0,
+    "status": "CERTIFIED",
+    "hard_block": false,
+    "reasons": [],
+    "recommended_action": "EMIT_DOSSIER"
+  }
+}

@@ -1,11 +1,15 @@
 from pathlib import Path
 import subprocess
-import sys
+
+from src.core.config_loader import load_config
+
 
 def main():
-    ledger_file = "ledger.jsonl"
-    signature_file = "ledger.sig"
-    public_key = "public_key.pem"
+    config = load_config()
+
+    ledger_file = config["paths"]["ledger_file"]
+    signature_file = config["paths"]["ledger_signature_file"]
+    public_key = config["keys"]["public_key_file"]
 
     if not Path(ledger_file).exists():
         print("❌ Ledger non trovato")
@@ -19,26 +23,22 @@ def main():
         print("❌ Chiave pubblica non trovata")
         return False
 
-    result = subprocess.run([
-        "openssl", "dgst", "-sha256",
-        "-verify", public_key,
-        "-signature", signature_file,
-        ledger_file
-    ], capture_output=True, text=True)
+    try:
+        subprocess.run([
+            "openssl", "dgst", "-sha256",
+            "-verify", public_key,
+            "-signature", signature_file,
+            ledger_file
+        ], check=True, capture_output=True)
 
-    out = (result.stdout or "").strip()
-    if out:
-        print(out)
-
-    if result.returncode == 0:
+        print("Verified OK")
         print("✅ FIRMA LEDGER VALIDA")
         return True
 
-    print("❌ FIRMA LEDGER NON VALIDA")
-    err = (result.stderr or "").strip()
-    if err:
-        print(err)
-    return False
+    except subprocess.CalledProcessError:
+        print("❌ FIRMA LEDGER NON VALIDA")
+        return False
+
 
 if __name__ == "__main__":
-    sys.exit(0 if main() else 1)
+    main()
