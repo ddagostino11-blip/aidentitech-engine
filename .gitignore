@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+venv/
+
+# Output generati
+validation_output/
+timestamps/
+logs/
+
+# Ledger runtime (opzionale)
+ledger.jsonl
+ledger.sig
+
+# OS
+.DS_Store
