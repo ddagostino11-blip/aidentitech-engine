@@ -7,52 +7,113 @@ from core.verify_ledger_signature import main as verify_signature
 from core.config_loader import load_config
 
 
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+
+def ok(text: str):
+    print(f"{GREEN}✔ {text}{RESET}")
+
+
+def fail(text: str):
+    print(f"{RED}✘ {text}{RESET}")
+
+
+def info(text: str):
+    print(f"{BLUE}{text}{RESET}")
+
+
+def section(title: str):
+    print()
+    print(f"{BOLD}=== {title} ==={RESET}")
+
+
 def show_status(config: dict):
-    print("=== STATUS ===")
+    section("STATUS")
     print(f"Ledger file: {config['paths']['ledger_file']}")
     print(f"Ledger signature: {config['paths']['ledger_signature_file']}")
     print(f"Audit log: {config['paths']['audit_log_file']}")
     print(f"Validation output dir: {config['paths']['validation_output_dir']}")
     print(f"Fiscal output dir: {config['paths']['fiscal_output_dir']}")
+
     print()
     print("Esistenza file:")
-    print(f"ledger: {Path(config['paths']['ledger_file']).exists()}")
-    print(f"signature: {Path(config['paths']['ledger_signature_file']).exists()}")
-    print(f"audit log: {Path(config['paths']['audit_log_file']).exists()}")
+    if Path(config["paths"]["ledger_file"]).exists():
+        ok("ledger presente")
+    else:
+        fail("ledger assente")
+
+    if Path(config["paths"]["ledger_signature_file"]).exists():
+        ok("firma ledger presente")
+    else:
+        fail("firma ledger assente")
+
+    if Path(config["paths"]["audit_log_file"]).exists():
+        ok("audit log presente")
+    else:
+        fail("audit log assente")
 
 
 def run_verify(config: dict):
-    print("=== VERIFY ===")
+    section("VERIFY")
     ledger_ok = verify_ledger(config["paths"]["ledger_file"])
     signature_ok = verify_signature()
 
-    if ledger_ok and signature_ok:
-        print("✅ Sistema verificato OK")
+    print()
+    if ledger_ok:
+        ok("Ledger verificato")
     else:
-        print("❌ Verifica fallita")
+        fail("Ledger non valido")
+
+    if signature_ok:
+        ok("Firma verificata")
+    else:
+        fail("Firma non valida")
+
+    if ledger_ok and signature_ok:
+        print()
+        ok("Sistema verificato OK")
+    else:
+        print()
+        fail("Verifica sistema fallita")
 
 
 def show_audit(config: dict):
-    print("=== AUDIT ===")
+    section("AUDIT")
     audit_path = Path(config["paths"]["audit_log_file"])
 
     if not audit_path.exists():
-        print("❌ Audit log non trovato")
+        fail("Audit log non trovato")
         return
 
     lines = audit_path.read_text(encoding="utf-8").splitlines()
     if not lines:
-        print("Audit log vuoto")
+        info("Audit log vuoto")
         return
 
+    ok("Ultima entry audit")
     print(lines[-1])
+
+
+def show_help():
+    section("PHARMA CLI")
+    print("Uso:")
+    print("  pharma validate")
+    print("  pharma verify")
+    print("  pharma status")
+    print("  pharma audit")
+    print("  pharma help")
 
 
 def main():
     config = load_config()
 
     if len(sys.argv) < 2:
-        print("Uso: pharma [validate | verify | status | audit]")
+        show_help()
         return
 
     command = sys.argv[1].lower()
@@ -65,9 +126,11 @@ def main():
         show_status(config)
     elif command == "audit":
         show_audit(config)
+    elif command == "help":
+        show_help()
     else:
-        print(f"Comando sconosciuto: {command}")
-        print("Uso: pharma [validate | verify | status | audit]")
+        fail(f"Comando sconosciuto: {command}")
+        show_help()
 
 
 if __name__ == "__main__":

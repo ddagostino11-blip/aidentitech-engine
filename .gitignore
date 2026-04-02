@@ -18,3 +18,4 @@ ledger.sig
 
 # macOS
 .DS_Store
+*.egg-info/
