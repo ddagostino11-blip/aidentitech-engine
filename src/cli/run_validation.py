@@ -4,8 +4,8 @@ import json
 import hashlib
 import subprocess
 
-from verify_ledger import verify_ledger
-from verify_ledger_signature import main as verify_ledger_signature_main
+from src.core.verify_ledger import verify_ledger
+from src.core.verify_ledger_signature import main as verify_ledger_signature_main
 
 ledger_file = "ledger.jsonl"
 audit_log_file = "runtime/logs/audit_log.jsonl"
@@ -213,3 +213,10 @@ append_audit_log(audit_entry)
 print(f"Audit log aggiornato in: {audit_log_file}")
 
 print("\n=== COMPLETATO ===")
+
+def main():
+    pass
+
+
+if __name__ == "__main__":
+    main()
