@@ -1,4 +1,36 @@
+from src.core.rule_engine import evaluate_rules
 from src.core.explainer import build_explanation
+
+
+def _normalize_pharma_rules(module_config: dict) -> list:
+    rules = module_config.get("rules", {})
+
+    normalized_rules = []
+
+    for field in rules.get("required_fields", []):
+        normalized_rules.append({
+            "rule_id": f"required_{field}",
+            "rule_type": "required_field",
+            "field": field,
+            "expected": "required",
+            "severity": "HIGH",
+            "recommended_action": "HOLD_BATCH"
+        })
+
+    for rule in rules.get("checks", []):
+        normalized_rules.append({
+            "rule_id": rule.get("rule_id"),
+            "rule_type": rule.get("type"),
+            "field": rule.get("field"),
+            "expected": rule.get("threshold", rule.get("expected")),
+            "severity": rule.get("severity", "LOW"),
+            "recommended_action": rule.get("recommended_action", "RELEASE_BATCH"),
+            "status": rule.get("status", "APPROVED"),
+            "risk_score": rule.get("risk_score", 0),
+            "issue_code": rule.get("issue_code", rule.get("rule_id"))
+        })
+
+    return normalized_rules
 
 
 def _severity_rank(severity: str) -> int:
@@ -21,227 +53,59 @@ def _status_rank(status: str) -> int:
     return ranking.get(status, 0)
 
 
-def _update_decision(result: dict, status: str, severity: str, action: str):
-    if _status_rank(status) > _status_rank(result["status"]):
-        result["status"] = status
-
-    if _severity_rank(severity) > _severity_rank(result["severity"]):
-        result["severity"] = severity
-
-    actions_priority = {
+def _action_rank(action: str) -> int:
+    ranking = {
         "RELEASE_BATCH": 1,
         "QUALITY_REVIEW": 2,
         "HOLD_BATCH": 3,
         "BLOCK_AND_ESCALATE": 4
     }
-
-    current_action = result.get("recommended_action")
-    if actions_priority.get(action, 0) > actions_priority.get(current_action, 0):
-        result["recommended_action"] = action
-
-
-def _check_required_fields(rules: dict, payload: dict, result: dict, audit: list):
-    required_fields = rules.get("required_fields", [])
-
-    for field in required_fields:
-        value = payload.get(field)
-
-        if field not in payload or value is None:
-            result["issues"].append({
-                "code": f"missing_{field}",
-                "field": field,
-                "actual_value": value,
-                "severity": "HIGH"
-            })
-            result["risk_score"] += 25
-
-            audit.append({
-                "rule_id": f"required_{field}",
-                "rule_type": "required_field",
-                "field": field,
-                "actual_value": value,
-                "expected": "required",
-                "outcome": "failed"
-            })
-
-            _update_decision(
-                result,
-                status="REJECTED",
-                severity="HIGH",
-                action="HOLD_BATCH"
-            )
-        else:
-            audit.append({
-                "rule_id": f"required_{field}",
-                "rule_type": "required_field",
-                "field": field,
-                "actual_value": value,
-                "expected": "required",
-                "outcome": "passed"
-            })
-
-
-def _check_boolean_equals(rule: dict, payload: dict, result: dict, audit: list):
-    field = rule.get("field")
-    expected = rule.get("expected")
-    value = payload.get(field)
-
-    if field not in payload:
-        return
-
-    if value == expected:
-        result["issues"].append({
-            "code": rule.get("issue_code"),
-            "field": field,
-            "actual_value": value,
-            "severity": rule.get("severity", "MEDIUM")
-        })
-        result["risk_score"] += rule.get("risk_score", 0)
-
-        audit.append({
-            "rule_id": rule.get("issue_code"),
-            "rule_type": "boolean_equals",
-            "field": field,
-            "actual_value": value,
-            "expected": expected,
-            "outcome": "triggered"
-        })
-
-        _update_decision(
-            result,
-            status=rule.get("status", "WARNING"),
-            severity=rule.get("severity", "MEDIUM"),
-            action=rule.get("recommended_action", "QUALITY_REVIEW")
-        )
-    else:
-        audit.append({
-            "rule_id": rule.get("issue_code"),
-            "rule_type": "boolean_equals",
-            "field": field,
-            "actual_value": value,
-            "expected": expected,
-            "outcome": "passed"
-        })
-
-
-def _check_numeric_gt(rule: dict, payload: dict, result: dict, audit: list):
-    field = rule.get("field")
-    threshold = rule.get("threshold")
-    value = payload.get(field)
-
-    if field not in payload or value is None:
-        return
-
-    if value > threshold:
-        result["issues"].append({
-            "code": rule.get("issue_code"),
-            "field": field,
-            "actual_value": value,
-            "threshold": threshold,
-            "severity": rule.get("severity", "MEDIUM")
-        })
-        result["risk_score"] += rule.get("risk_score", 0)
-
-        audit.append({
-            "rule_id": rule.get("issue_code"),
-            "rule_type": "numeric_gt",
-            "field": field,
-            "actual_value": value,
-            "expected": threshold,
-            "outcome": "triggered"
-        })
-
-        _update_decision(
-            result,
-            status=rule.get("status", "WARNING"),
-            severity=rule.get("severity", "MEDIUM"),
-            action=rule.get("recommended_action", "QUALITY_REVIEW")
-        )
-    else:
-        audit.append({
-            "rule_id": rule.get("issue_code"),
-            "rule_type": "numeric_gt",
-            "field": field,
-            "actual_value": value,
-            "expected": threshold,
-            "outcome": "passed"
-        })
-
-
-def _check_numeric_lt(rule: dict, payload: dict, result: dict, audit: list):
-    field = rule.get("field")
-    threshold = rule.get("threshold")
-    value = payload.get(field)
-
-    if field not in payload or value is None:
-        return
-
-    if value < threshold:
-        result["issues"].append({
-            "code": rule.get("issue_code"),
-            "field": field,
-            "actual_value": value,
-            "threshold": threshold,
-            "severity": rule.get("severity", "MEDIUM")
-        })
-        result["risk_score"] += rule.get("risk_score", 0)
-
-        audit.append({
-            "rule_id": rule.get("issue_code"),
-            "rule_type": "numeric_lt",
-            "field": field,
-            "actual_value": value,
-            "expected": threshold,
-            "outcome": "triggered"
-        })
-
-        _update_decision(
-            result,
-            status=rule.get("status", "WARNING"),
-            severity=rule.get("severity", "MEDIUM"),
-            action=rule.get("recommended_action", "QUALITY_REVIEW")
-        )
-    else:
-        audit.append({
-            "rule_id": rule.get("issue_code"),
-            "rule_type": "numeric_lt",
-            "field": field,
-            "actual_value": value,
-            "expected": threshold,
-            "outcome": "passed"
-        })
+    return ranking.get(action, 0)
 
 
 def run(module_config: dict, payload: dict):
-    rules = module_config.get("rules", {})
-    actions = rules.get("actions", {})
+    normalized_rules = _normalize_pharma_rules(module_config)
+    engine_result = evaluate_rules(payload, normalized_rules)
 
     result = {
         "status": "APPROVED",
         "risk_score": 0,
         "issues": [],
+        "audit": engine_result.get("audit", []),
         "severity": "LOW",
-        "recommended_action": actions.get("APPROVED", "RELEASE_BATCH")
+        "recommended_action": "RELEASE_BATCH"
     }
 
-    audit = []
+    for rule in normalized_rules:
+        rule_id = rule.get("rule_id")
+        triggered = any(
+            item.get("rule_id") == rule_id and item.get("outcome") in ["failed", "triggered"]
+            for item in engine_result.get("audit", [])
+        )
 
-    _check_required_fields(rules, payload, result, audit)
+        if not triggered:
+            continue
 
-    checks = rules.get("checks", [])
-    for rule in checks:
-        rule_type = rule.get("type")
+        result["issues"].append({
+            "code": rule.get("issue_code", rule_id),
+            "field": rule.get("field"),
+            "actual_value": payload.get(rule.get("field")),
+            "threshold": rule.get("expected"),
+            "severity": rule.get("severity", "LOW"),
+            "recommended_action": rule.get("recommended_action", "RELEASE_BATCH")
+        })
 
-        if rule_type == "boolean_equals":
-            _check_boolean_equals(rule, payload, result, audit)
-        elif rule_type == "numeric_gt":
-            _check_numeric_gt(rule, payload, result, audit)
-        elif rule_type == "numeric_lt":
-            _check_numeric_lt(rule, payload, result, audit)
+        result["risk_score"] += rule.get("risk_score", 0)
 
-    result["audit"] = audit
+        if _status_rank(rule.get("status", "APPROVED")) > _status_rank(result["status"]):
+            result["status"] = rule.get("status", "APPROVED")
 
-    # 🔥 QUI IL COLLEGAMENTO AL CORE
+        if _severity_rank(rule.get("severity", "LOW")) > _severity_rank(result["severity"]):
+            result["severity"] = rule.get("severity", "LOW")
+
+        if _action_rank(rule.get("recommended_action", "RELEASE_BATCH")) > _action_rank(result["recommended_action"]):
+            result["recommended_action"] = rule.get("recommended_action", "RELEASE_BATCH")
+
     result["explanation"] = build_explanation(result)
 
     return result
