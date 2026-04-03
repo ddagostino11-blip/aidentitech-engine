@@ -1,24 +1,43 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 import importlib
 
 from core.config_loader import load_config
 from services.validation_service import execute_validation
 
+
 app = FastAPI(title="Aidentitech Engine API")
 
 
-# =========================
-# REQUEST MODEL
-# =========================
 class ValidateRequest(BaseModel):
     module: str
     payload: dict | None = None
 
+    @model_validator(mode="after")
+    def validate_payload_for_module(self):
+        if self.module == "pharma":
+            payload = self.payload or {}
 
-# =========================
-# MODULE LOADER
-# =========================
+            required_fields = [
+                "product_id",
+                "batch",
+                "gmp_compliant",
+                "temperature",
+            ]
+
+            missing_fields = [
+                field for field in required_fields
+                if field not in payload or payload.get(field) is None
+            ]
+
+            if missing_fields:
+                raise ValueError(
+                    f"Missing required payload fields for pharma: {', '.join(missing_fields)}"
+                )
+
+        return self
+
+
 def load_module_config(module_name: str):
     try:
         module = importlib.import_module(f"modules.{module_name}.config")
@@ -30,17 +49,11 @@ def load_module_config(module_name: str):
         )
 
 
-# =========================
-# ROOT
-# =========================
 @app.get("/")
 def root():
     return {"status": "engine running"}
 
 
-# =========================
-# STATUS
-# =========================
 @app.get("/status")
 def status(module: str = "pharma"):
     config = load_config()
@@ -55,9 +68,6 @@ def status(module: str = "pharma"):
     }
 
 
-# =========================
-# VALIDATE (CON PAYLOAD)
-# =========================
 @app.post("/validate")
 def validate(request: ValidateRequest):
     config = load_config()
