@@ -5,6 +5,7 @@ import importlib
 from core.config_loader import load_config
 from services.validation_service import execute_validation
 from dossier.dossier_builder import build_precompliance_dossier
+from dossier.exporters import export_dossier_pdf
 
 app = FastAPI(title="Aidentitech Engine API")
 
@@ -87,9 +88,15 @@ def validate(request: ValidateRequest):
         decision_result=result["decision"]
     )
 
+    pdf_path = export_dossier_pdf(
+        dossier,
+        f"runtime/dossiers/{dossier['dossier_id']}.pdf"
+    )
+
     return {
         "engine": "aidentitech",
         "module": request.module,
         "result": result,
-        "dossier": dossier
+        "dossier": dossier,
+        "pdf_path": pdf_path
     }
