@@ -4,7 +4,7 @@ import importlib
 
 from core.config_loader import load_config
 from services.validation_service import execute_validation
-
+from dossier.dossier_builder import build_precompliance_dossier
 
 app = FastAPI(title="Aidentitech Engine API")
 
@@ -80,8 +80,16 @@ def validate(request: ValidateRequest):
         payload=request.payload
     )
 
+    dossier = build_precompliance_dossier(
+        module=request.module,
+        jurisdiction="EU",
+        payload=request.payload or {},
+        decision_result=result["decision"]
+    )
+
     return {
         "engine": "aidentitech",
         "module": request.module,
-        "result": result
+        "result": result,
+        "dossier": dossier
     }
