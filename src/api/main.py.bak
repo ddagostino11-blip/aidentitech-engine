@@ -12,7 +12,7 @@ app = FastAPI(title="Aidentitech Engine API")
 class ValidateRequest(BaseModel):
     module: str
     payload: dict | None = None
-    client_id: str | None = "anonymous"
+    client_id: str
 
     @model_validator(mode="after")
     def validate_payload_for_module(self):
