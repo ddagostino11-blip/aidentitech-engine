@@ -6,6 +6,7 @@ from core.config_loader import load_config
 from services.validation_service import execute_validation
 from dossier.dossier_builder import build_precompliance_dossier
 from dossier.exporters import export_dossier_pdf
+from core.dossier_repository import save_dossier, load_dossier
 
 app = FastAPI(title="Aidentitech Engine API")
 
@@ -13,6 +14,7 @@ app = FastAPI(title="Aidentitech Engine API")
 class ValidateRequest(BaseModel):
     module: str
     payload: dict | None = None
+    client_id: str
 
     @model_validator(mode="after")
     def validate_payload_for_module(self):
@@ -81,21 +83,30 @@ def validate(request: ValidateRequest):
         payload=request.payload
     )
 
+    # ----- DOSSIER -----
     dossier = build_precompliance_dossier(
         module=request.module,
         jurisdiction="EU",
         payload=request.payload or {},
-        decision_result=result["decision"]
+        decision_result=result["decision"],
+        regulatory_context={
+            "client_id": request.client_id
+        }
     )
 
+    # ----- PDF -----
     pdf_path = export_dossier_pdf(
         dossier,
-        f"runtime/dossiers/{dossier['dossier_id']}.pdf"
+        f"runtime/dossiers/{request.client_id}/{dossier['dossier_id']}.pdf"
     )
+
+    # ----- SAVE DOSSIER -----
+    save_dossier(request.client_id, dossier)
 
     return {
         "engine": "aidentitech",
         "module": request.module,
+        "client_id": request.client_id,
         "result": result,
         "dossier": dossier,
         "pdf_path": pdf_path
