@@ -5,13 +5,11 @@ def evaluate_rules(payload: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict
     issues = []
     audit = []
 
-    result = {
-        "status": "APPROVED",
-        "severity": "LOW",
-        "issues": [],
-        "audit": [],
-        "recommended_action": "ALLOW"
-    }
+    max_severity = "LOW"
+    status = "APPROVED"
+    recommended_action = "RELEASE_BATCH"
+
+    severity_order = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
 
     for rule in rules:
         rule_id = rule.get("rule_id")
@@ -53,15 +51,38 @@ def evaluate_rules(payload: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict
         })
 
         if triggered:
+            severity = rule.get("severity", "LOW")
+
             issues.append({
                 "code": rule_id,
                 "field": field,
                 "actual_value": actual_value,
                 "threshold": rule.get("expected"),
-                "severity": rule.get("severity", "LOW")
+                "severity": severity,
+                "recommended_action": rule.get("action", "REVIEW")
             })
 
-    result["issues"] = issues
-    result["audit"] = audit
+            # aggiorna severità massima
+            if severity_order.get(severity, 1) > severity_order.get(max_severity, 1):
+                max_severity = severity
+
+    # decision logic finale
+    if max_severity == "LOW":
+        status = "APPROVED"
+        recommended_action = "RELEASE_BATCH"
+    elif max_severity == "MEDIUM":
+        status = "WARNING"
+        recommended_action = "QUALITY_REVIEW"
+    elif max_severity == "HIGH":
+        status = "CRITICAL"
+        recommended_action = "BLOCK_BATCH"
+
+    result = {
+        "status": status,
+        "severity": max_severity,
+        "issues": issues,
+        "audit": audit,
+        "recommended_action": recommended_action
+    }
 
     return result
