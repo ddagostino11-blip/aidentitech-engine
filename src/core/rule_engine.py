@@ -10,7 +10,7 @@ def evaluate_rules(payload: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict
         "severity": "LOW",
         "issues": [],
         "audit": [],
-        "recommended_action": "RELEASE_BATCH"
+        "recommended_action": "ALLOW"
     }
 
     for rule in rules:
