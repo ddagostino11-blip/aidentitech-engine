@@ -1,6 +1,6 @@
 from src.core.rule_engine import evaluate_rules
 from src.core.explainer import build_explanation
-
+from src.modules.pharma.policy import apply_policy
 
 def _normalize_pharma_rules(module_config: dict) -> list:
     rules = module_config.get("rules", {})
@@ -66,6 +66,7 @@ def _action_rank(action: str) -> int:
 def run(module_config: dict, payload: dict):
     normalized_rules = _normalize_pharma_rules(module_config)
     compliance_scope = module_config.get("compliance_scope", {})
+
     engine_result = evaluate_rules(payload, normalized_rules)
 
     result = {
@@ -75,34 +76,15 @@ def run(module_config: dict, payload: dict):
         "audit": engine_result.get("audit", []),
         "severity": "LOW",
         "recommended_action": "RELEASE_BATCH",
-        "compliance_scope": compliance_scope
+        "compliance_scope": compliance_scope,
     }
 
-    # 🔍 BUILD ISSUES + RISK
-    for rule in normalized_rules:
-        rule_id = rule.get("rule_id")
-
-        triggered = any(
-            item.get("rule_id") == rule_id and item.get("outcome") in ["failed", "triggered"]
-            for item in engine_result.get("audit", [])
-        )
-
-        if not triggered:
-            continue
-
-        issue = {
-            "code": rule.get("issue_code", rule_id),
-            "field": rule.get("field"),
-            "actual_value": payload.get(rule.get("field")),
-            "threshold": rule.get("expected"),
-            "severity": rule.get("severity", "LOW"),
-            "recommended_action": rule.get("recommended_action", "RELEASE_BATCH")
-        }
-
+    # Collect issues
+    for issue in engine_result.get("issues", []):
         result["issues"].append(issue)
-        result["risk_score"] += rule.get("risk_score", 0)
+        result["risk_score"] += issue.get("risk_score", 0)
 
-    # 🔥 AGGREGAZIONE FINALE GOLD
+    # Aggregation logic
     if result["issues"]:
         max_severity = max(
             result["issues"],
@@ -112,13 +94,10 @@ def run(module_config: dict, payload: dict):
         max_severity = "LOW"
 
     result["severity"] = max_severity
-
-    # ✅ COUNT BLOCCANTI
     result["blocking_issues_count"] = len([
         i for i in result["issues"] if i.get("severity") == "HIGH"
     ])
 
-    # 🎯 DECISION LOGIC + GOLD FIELDS
     if max_severity == "HIGH":
         result["status"] = "REJECTED"
         result["recommended_action"] = "HOLD_BATCH"
@@ -127,26 +106,11 @@ def run(module_config: dict, payload: dict):
         result["regulatory_impact"] = "HIGH"
         result["batch_disposition"] = "QUARANTINED"
 
-    elif max_severity == "MEDIUM":
-        result["status"] = "REVIEW"
-        result["recommended_action"] = "QUALITY_REVIEW"
-        result["decision_code"] = "PHARMA_REVIEW"
-        result["review_required"] = True
-        result["regulatory_impact"] = "MEDIUM"
-        result["batch_disposition"] = "ON_HOLD"
-
-    else:
-        result["status"] = "APPROVED"
-        result["recommended_action"] = "RELEASE_BATCH"
-        result["decision_code"] = "PHARMA_APPROVED"
-        result["review_required"] = False
-        result["regulatory_impact"] = "LOW"
-        result["batch_disposition"] = "RELEASED"
-
-    # 🧠 EXPLANATION
+    # Explanation + payload
     result["explanation"] = build_explanation(result)
-
-    # 📦 PAYLOAD TRACE (IMPORTANTISSIMO)
     result["payload_received"] = payload
+
+    # 👉 POLICY LAYER (NUOVO)
+    result = apply_policy(result, module_config, payload)
 
     return result
