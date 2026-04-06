@@ -78,6 +78,7 @@ def run(module_config: dict, payload: dict):
         "compliance_scope": compliance_scope
     }
 
+    # 🔍 BUILD ISSUES + RISK
     for rule in normalized_rules:
         rule_id = rule.get("rule_id")
 
@@ -89,36 +90,63 @@ def run(module_config: dict, payload: dict):
         if not triggered:
             continue
 
-        result["issues"].append({
+        issue = {
             "code": rule.get("issue_code", rule_id),
             "field": rule.get("field"),
             "actual_value": payload.get(rule.get("field")),
             "threshold": rule.get("expected"),
             "severity": rule.get("severity", "LOW"),
             "recommended_action": rule.get("recommended_action", "RELEASE_BATCH")
-        })
+        }
 
+        result["issues"].append(issue)
         result["risk_score"] += rule.get("risk_score", 0)
 
-    # 🔥 AGGREGAZIONE FINALE (NUOVA LOGICA CORRETTA)
+    # 🔥 AGGREGAZIONE FINALE GOLD
     if result["issues"]:
         max_severity = max(
             result["issues"],
             key=lambda x: _severity_rank(x.get("severity", "LOW"))
         )["severity"]
+    else:
+        max_severity = "LOW"
 
-        if max_severity == "HIGH":
-            result["status"] = "REJECTED"
-            result["recommended_action"] = "HOLD_BATCH"
-        elif max_severity == "MEDIUM":
-            result["status"] = "REVIEW"
-            result["recommended_action"] = "QUALITY_REVIEW"
-        else:
-            result["status"] = "APPROVED"
-            result["recommended_action"] = "RELEASE_BATCH"
+    result["severity"] = max_severity
 
-        result["severity"] = max_severity
+    # ✅ COUNT BLOCCANTI
+    result["blocking_issues_count"] = len([
+        i for i in result["issues"] if i.get("severity") == "HIGH"
+    ])
 
+    # 🎯 DECISION LOGIC + GOLD FIELDS
+    if max_severity == "HIGH":
+        result["status"] = "REJECTED"
+        result["recommended_action"] = "HOLD_BATCH"
+        result["decision_code"] = "PHARMA_REJECTED"
+        result["review_required"] = True
+        result["regulatory_impact"] = "HIGH"
+        result["batch_disposition"] = "QUARANTINED"
+
+    elif max_severity == "MEDIUM":
+        result["status"] = "REVIEW"
+        result["recommended_action"] = "QUALITY_REVIEW"
+        result["decision_code"] = "PHARMA_REVIEW"
+        result["review_required"] = True
+        result["regulatory_impact"] = "MEDIUM"
+        result["batch_disposition"] = "ON_HOLD"
+
+    else:
+        result["status"] = "APPROVED"
+        result["recommended_action"] = "RELEASE_BATCH"
+        result["decision_code"] = "PHARMA_APPROVED"
+        result["review_required"] = False
+        result["regulatory_impact"] = "LOW"
+        result["batch_disposition"] = "RELEASED"
+
+    # 🧠 EXPLANATION
     result["explanation"] = build_explanation(result)
+
+    # 📦 PAYLOAD TRACE (IMPORTANTISSIMO)
+    result["payload_received"] = payload
 
     return result

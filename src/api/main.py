@@ -71,6 +71,7 @@ def status(module: str = "pharma"):
 
 @app.post("/validate")
 def validate(request: ValidateRequest):
+
     if request.module not in AVAILABLE_MODULES:
         raise HTTPException(
             status_code=400,
@@ -94,34 +95,39 @@ def validate(request: ValidateRequest):
             payload=request.payload
         )
 
+        decision = result.get("decision", {})
+
         ledger_entry = append_ledger_entry({
             "client_id": request.client_id,
             "module": request.module,
-            "decision": result.get("decision"),
+            "decision": decision.get("status"),
         })
 
-        # Enrich result
-        result["module"] = request.module
-        result["versioning"] = module_config.get("versioning", {})
-
-        decision = result.get("decision", {})
-
-        # ✅ CLEAN RESPONSE
         return {
             "engine": "aidentitech",
             "module": request.module,
             "client_id": request.client_id,
+
             "status": decision.get("status"),
             "severity": decision.get("severity"),
             "risk_score": decision.get("risk_score"),
             "recommended_action": decision.get("recommended_action"),
+
+            "decision_code": decision.get("decision_code"),
+            "review_required": decision.get("review_required"),
+            "blocking_issues_count": decision.get("blocking_issues_count"),
+            "regulatory_impact": decision.get("regulatory_impact"),
+            "batch_disposition": decision.get("batch_disposition"),
+
             "issues": decision.get("issues", []),
             "audit": decision.get("audit", []),
             "explanation": decision.get("explanation", {}),
+
             "payload_received": result.get("payload_received", {}),
-            "versioning": result.get("versioning", {}),
+            "versioning": result.get("versioning", module_config.get("versioning", {})),
             "compliance_scope": decision.get("compliance_scope", {}),
-            "ledger_hash": ledger_entry.get("hash")
+
+            "ledger_hash": ledger_entry.get("hash"),
         }
 
     except HTTPException:
