@@ -23,5 +23,13 @@
     "hard_block": false,
     "reasons": [],
     "recommended_action": "EMIT_DOSSIER"
+  },
+  "modules": {
+    "food": {
+      "enabled": true
+    },
+    "pharma": {
+      "enabled": true
+    }
   }
 }

@@ -41,14 +41,13 @@ class ValidateRequest(BaseModel):
 
 def load_module_config(module_name: str):
     try:
-        module = importlib.import_module(f"modules.{module_name}.config")
-        return getattr(module, f"get_{module_name}_config")()
+        module = importlib.import_module(f"src.modules.{module_name}.config")
+        return module.load_config()
     except Exception:
         raise HTTPException(
             status_code=400,
             detail=f"Modulo non valido: {module_name}"
         )
-
 
 @app.get("/")
 def root():

@@ -1,0 +1,23 @@
+{
+  "rules": [
+    {
+      "rule_id": "expiry_required",
+      "rule_type": "required_field",
+      "field": "expiry_date"
+    },
+    {
+      "rule_id": "temperature_high",
+      "rule_type": "numeric_gt",
+      "field": "temperature",
+      "expected": 5,
+      "severity": "MEDIUM"
+    },
+    {
+      "rule_id": "contamination_flag",
+      "rule_type": "boolean_equals",
+      "field": "contaminated",
+      "expected": true,
+      "severity": "CRITICAL"
+    }
+  ]
+}
