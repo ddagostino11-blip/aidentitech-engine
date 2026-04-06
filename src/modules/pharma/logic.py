@@ -65,6 +65,7 @@ def _action_rank(action: str) -> int:
 
 def run(module_config: dict, payload: dict):
     normalized_rules = _normalize_pharma_rules(module_config)
+    compliance_scope = module_config.get("compliance_scope", {})
     engine_result = evaluate_rules(payload, normalized_rules)
 
     result = {
@@ -73,11 +74,13 @@ def run(module_config: dict, payload: dict):
         "issues": [],
         "audit": engine_result.get("audit", []),
         "severity": "LOW",
-        "recommended_action": "RELEASE_BATCH"
+        "recommended_action": "RELEASE_BATCH",
+        "compliance_scope": compliance_scope
     }
 
     for rule in normalized_rules:
         rule_id = rule.get("rule_id")
+
         triggered = any(
             item.get("rule_id") == rule_id and item.get("outcome") in ["failed", "triggered"]
             for item in engine_result.get("audit", [])

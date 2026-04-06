@@ -100,6 +100,9 @@ def validate(request: ValidateRequest):
             "decision": result.get("decision"),
         })
 
+        result["module"] = request.module
+        result["versioning"] = module_config.get("versioning", {})
+
         return {
             "engine": "aidentitech",
             "module": request.module,
