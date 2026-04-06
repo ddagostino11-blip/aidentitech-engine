@@ -5,6 +5,7 @@ import importlib
 from core.config_loader import load_config
 from services.validation_service import execute_validation
 from core.ledger_chain import append_ledger_entry
+from src.modules.registry import AVAILABLE_MODULES
 
 app = FastAPI(title="Aidentitech Engine API")
 
@@ -70,26 +71,48 @@ def status(module: str = "pharma"):
 
 @app.post("/validate")
 def validate(request: ValidateRequest):
-    config = load_config()
-    module_config = load_module_config(request.module)
+    if request.module not in AVAILABLE_MODULES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Modulo non valido: {request.module}"
+        )
 
-    result = execute_validation(
-        config=config,
-        module_config=module_config,
-        module_name=request.module,
-        payload=request.payload
-    )
+    if not AVAILABLE_MODULES[request.module]["enabled"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Modulo disabilitato: {request.module}"
+        )
 
-    ledger_entry = append_ledger_entry({
-        "client_id": request.client_id,
-        "module": request.module,
-        "decision": result.get("decision"),
-    })
+    try:
+        config = load_config()
+        module_config = load_module_config(request.module)
 
-    return {
-        "engine": "aidentitech",
-        "module": request.module,
-        "client_id": request.client_id,
-        "result": result,
-        "ledger_hash": ledger_entry["hash"]
-    }
+        result = execute_validation(
+            config=config,
+            module_config=module_config,
+            module_name=request.module,
+            payload=request.payload
+        )
+
+        ledger_entry = append_ledger_entry({
+            "client_id": request.client_id,
+            "module": request.module,
+            "decision": result.get("decision"),
+        })
+
+        return {
+            "engine": "aidentitech",
+            "module": request.module,
+            "client_id": request.client_id,
+            "result": result,
+            "ledger_hash": ledger_entry.get("hash")
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Validation error: {str(e)}"
+        )
