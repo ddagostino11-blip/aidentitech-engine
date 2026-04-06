@@ -100,14 +100,27 @@ def validate(request: ValidateRequest):
             "decision": result.get("decision"),
         })
 
+        # Enrich result
         result["module"] = request.module
         result["versioning"] = module_config.get("versioning", {})
 
+        decision = result.get("decision", {})
+
+        # ✅ CLEAN RESPONSE
         return {
             "engine": "aidentitech",
             "module": request.module,
             "client_id": request.client_id,
-            "result": result,
+            "status": decision.get("status"),
+            "severity": decision.get("severity"),
+            "risk_score": decision.get("risk_score"),
+            "recommended_action": decision.get("recommended_action"),
+            "issues": decision.get("issues", []),
+            "audit": decision.get("audit", []),
+            "explanation": decision.get("explanation", {}),
+            "payload_received": result.get("payload_received", {}),
+            "versioning": result.get("versioning", {}),
+            "compliance_scope": decision.get("compliance_scope", {}),
             "ledger_hash": ledger_entry.get("hash")
         }
 
