@@ -1,21 +1,52 @@
+# =========================
 # Python
+# =========================
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Virtual env
+# =========================
+# Virtual environments
+# =========================
 venv/
+.env/
 
+# =========================
 # Runtime / generated output
+# =========================
+runtime/
 validation_output/
 commercialisti_inbox/
 timestamps/
 logs/
 client_proof/
 
-# Ledger runtime
+# =========================
+# Ledger runtime (NON versionare)
+# =========================
 ledger.jsonl
 ledger.sig
 
+# =========================
+# Backup files
+# =========================
+*.bak
+
+# =========================
 # macOS
+# =========================
 .DS_Store
+
+# =========================
+# Python packaging
+# =========================
 *.egg-info/
+dist/
+build/
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
