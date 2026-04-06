@@ -1,7 +1,7 @@
 import json
 import hashlib
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 LEDGER_PATH = "runtime/logs/ledger_chain.jsonl"
 
@@ -33,7 +33,7 @@ def append_ledger_entry(data: dict) -> dict:
     prev_hash = _get_last_hash()
 
     entry = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": data,
         "prev_hash": prev_hash,
     }

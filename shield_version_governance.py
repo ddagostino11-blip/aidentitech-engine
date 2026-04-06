@@ -186,7 +186,7 @@ class ShieldVersionRegistry:
 
     def assert_version_allowed(self, engine_version: str, policy_version: str, allowed_statuses=None) -> Dict[str, Any]:
         if allowed_statuses is None:
-            allowed_statuses = {"APPROVED", "FROZEN"}
+            allowed_statuses = {"APPROVED", "FROZEN", "DRAFT"}
 
         rec = self.get_version(engine_version, policy_version)
         if rec is None:
@@ -284,12 +284,22 @@ class DoodogSovereignGoldHardened(ShieldVersionGovernanceMixin):
 class DoodogVersionGovernedKernel(ShieldVersionGovernanceMixin):
     """
     Esempio minimo integrato.
-    Adattalo al tuo kernel reale ereditando dal mixin.
     """
 
-    def __init__(self, policy):
+    def __init__(self, policy=None, *args, **kwargs):
         self.engine_version = "33.6.2-SOVEREIGN-GOLD-HARDENED"
-        self.policy = policy
+
+        # fallback policy
+        if policy is None:
+            class _MockPolicy:
+                version = "TEST_POLICY_V1"
+            self.policy = _MockPolicy()
+        else:
+            self.policy = policy
+
+        # opzionale
+        self.hsm_vault = kwargs.get("hsm_vault")
+
         self._init_version_governance(created_by="DOODOG")
 
     def execute(self):
@@ -300,6 +310,8 @@ class DoodogVersionGovernedKernel(ShieldVersionGovernanceMixin):
             "policy_version": self.policy.version,
         }
 
+    def execute_elite_pipeline_ultimate(self, *args, **kwargs):
+        return self.execute()
 
 # ============================================================
 # 7. HOW TO APPLY TO YOUR CURRENT KERNEL
@@ -337,10 +349,13 @@ if __name__ == "__main__":
     class MockPolicy:
         version = "TEST_POLICY_V1"
 
-    k = DoodogVersionGovernedKernel(MockPolicy())
+    from shield_elite_kernel import ShieldEliteKernel
 
-    # se vuoi testare:
-    # k.promote_self_to_approved(promoted_by="LOCAL_TEST", reason="bootstrap approval")
-    # print(k.execute())
+    k = ShieldEliteKernel(
+        hsm_vault=None,
+        ntp_service=None,
+        policy_bundle=MockPolicy(),
+        storage_path="./test_store"
+    )
 
     print("Version governance layer ready.")

@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime, timezone
 
 # IMPORTA IL TUO KERNEL
-# from your_kernel_file import DoodogSovereignGoldHardened
+from shield_elite_kernel import ShieldEliteKernel
 
 # ============================================================
 # MOCK INFRASTRUTTURA (REALISTICI MA LEGGERI)
@@ -83,9 +83,9 @@ def kernel(valid_data):
     policy = MockPolicy()
 
     # SOSTITUISCI con il tuo import reale
-    from __main__ import DoodogSovereignGoldHardened
+    from shield_elite_kernel import ShieldEliteKernel
 
-    return DoodogSovereignGoldHardened(
+    return ShieldEliteKernel(
         hsm_vault=hsm,
         ntp_service=ntp,
         policy_bundle=policy,
@@ -102,8 +102,7 @@ def test_pipeline_runs(kernel, valid_data):
     res = kernel.execute_elite_pipeline_ultimate(user, valid_data)
 
     assert "status" in res
-    assert res["status"] in ["CERTIFIED", "CRITICAL_ERROR", "REJECTED"]
-
+    assert res["status"] == "CERTIFIED"
 
 # ============================================================
 # TEST 2 — CONSENT BLOCCA
@@ -195,9 +194,9 @@ def test_event_store_integrity(kernel, valid_data):
 # ============================================================
 
 def test_treatment_ambiguity():
-    from __main__ import DoodogSovereignGoldHardened
+    from shield_elite_kernel import ShieldEliteKernel
 
-    kernel = DoodogSovereignGoldHardened(MockHSM(), MockNTP(), MockPolicy())
+    kernel = ShieldEliteKernel(MockHSM(), MockNTP(), MockPolicy())
 
     df = pd.DataFrame([
         {"subject": "S1", "sequence": "TR", "period": 1, "treatment": 0, "value": 100},
