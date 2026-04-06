@@ -100,14 +100,24 @@ def run(module_config: dict, payload: dict):
 
         result["risk_score"] += rule.get("risk_score", 0)
 
-        if _status_rank(rule.get("status", "APPROVED")) > _status_rank(result["status"]):
-            result["status"] = rule.get("status", "APPROVED")
+    # 🔥 AGGREGAZIONE FINALE (NUOVA LOGICA CORRETTA)
+    if result["issues"]:
+        max_severity = max(
+            result["issues"],
+            key=lambda x: _severity_rank(x.get("severity", "LOW"))
+        )["severity"]
 
-        if _severity_rank(rule.get("severity", "LOW")) > _severity_rank(result["severity"]):
-            result["severity"] = rule.get("severity", "LOW")
+        if max_severity == "HIGH":
+            result["status"] = "REJECTED"
+            result["recommended_action"] = "HOLD_BATCH"
+        elif max_severity == "MEDIUM":
+            result["status"] = "REVIEW"
+            result["recommended_action"] = "QUALITY_REVIEW"
+        else:
+            result["status"] = "APPROVED"
+            result["recommended_action"] = "RELEASE_BATCH"
 
-        if _action_rank(rule.get("recommended_action", "RELEASE_BATCH")) > _action_rank(result["recommended_action"]):
-            result["recommended_action"] = rule.get("recommended_action", "RELEASE_BATCH")
+        result["severity"] = max_severity
 
     result["explanation"] = build_explanation(result)
 
