@@ -68,9 +68,8 @@ def run(module_config: dict, payload: dict):
     compliance_scope = module_config.get("compliance_scope", {})
     engine_result = evaluate_rules(payload, normalized_rules)
 
-    # 🔴 BASE RESULT (contratto API stabile)
+    # BASE RESULT (contratto API stabile)
     result = {
-        "status": "APPROVED",
         "risk_score": 0,
         "issues": [],
         "audit": engine_result.get("audit", []),
@@ -83,7 +82,7 @@ def run(module_config: dict, payload: dict):
         "compliance_scope": compliance_scope
     }
 
-    # ⚙️ BUILD ISSUES + RISK
+    # BUILD ISSUES + RISK
     for rule in normalized_rules:
         rule_id = rule.get("rule_id")
 
@@ -107,43 +106,40 @@ def run(module_config: dict, payload: dict):
         result["issues"].append(issue)
         result["risk_score"] += rule.get("risk_score", 0)
 
-    # 🔥 DECISION LOGIC (CORRETTA)
+    # DECISION LOGIC (SOLO SEVERITY)
     blocking_issues = [
         i for i in result["issues"]
         if i.get("severity") == "HIGH"
     ]
 
     if blocking_issues:
-        result["status"] = "REJECTED"
+        result["severity"] = "HIGH"
         result["recommended_action"] = "HOLD_BATCH"
         result["decision_code"] = "PHARMA_REJECTED"
         result["review_required"] = True
         result["regulatory_impact"] = "HIGH"
         result["batch_disposition"] = "QUARANTINED"
-        result["severity"] = "HIGH"
 
     elif any(i.get("severity") == "MEDIUM" for i in result["issues"]):
-        result["status"] = "REVIEW"
+        result["severity"] = "MEDIUM"
         result["recommended_action"] = "QUALITY_REVIEW"
         result["decision_code"] = "PHARMA_REVIEW"
         result["review_required"] = True
         result["regulatory_impact"] = "MEDIUM"
         result["batch_disposition"] = "ON_HOLD"
-        result["severity"] = "MEDIUM"
 
     else:
-        result["status"] = "APPROVED"
+        result["severity"] = "LOW"
         result["recommended_action"] = "RELEASE_BATCH"
         result["decision_code"] = "PHARMA_APPROVED"
         result["review_required"] = False
         result["regulatory_impact"] = "LOW"
         result["batch_disposition"] = "RELEASED"
-        result["severity"] = "LOW"
 
-    # 🧠 EXPLANATION
+    # EXPLANATION
     result["explanation"] = build_explanation(result)
 
-    # 📦 PAYLOAD TRACE
+    # PAYLOAD TRACE
     result["payload_received"] = payload
 
     return result
