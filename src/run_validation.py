@@ -5,7 +5,7 @@ import hashlib
 import subprocess
 import base64
 
-from core.dossier_builder import canonical_json, canonical_hash, sign_hash_with_openssl
+from core.dossier_builder import canonical_json, canonical_hash, sign_hash_with_openssl, build_dossier
 
 # =========================
 # PREFLIGHT SICUREZZA LEDGER
@@ -26,7 +26,7 @@ def preflight_security_check():
         ["python3", "src/core/verify_ledger.py"],
         capture_output=True,
         text=True
-    )
+)
 
     print(ledger_check.stdout)
 
@@ -48,7 +48,7 @@ def preflight_security_check():
         ["python3", "src/core/verify_ledger_signature.py"],
         capture_output=True,
         text=True
-    )
+)
 
     print(signature_check.stdout)
 
@@ -89,98 +89,63 @@ if __name__ == "__main__":
 
     # -------------------------
     # BUILD DOSSIER
-    # -------------------------
-    summary_file = "validation_output/summary.json"
-    dossier_file = f"validation_output/dossier_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    fiscal_file = "commercialisti_inbox/fiscale.json"
+summary_file = "validation_output/summary.json"
+dossier_file = f"validation_output/dossier_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+fiscal_file = "commercialisti_inbox/fiscale.json"
 
-    Path("validation_output").mkdir(exist_ok=True)
+Path("validation_output").mkdir(exist_ok=True)
 
-    previous_hash = None
+previous_hash = None
 
-    core_dossier = {
-        "dossier_type": "MASTER_PHARMA",
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "engine_version": "4.0",
-        "policy_version": "1.0",
-        "summary_file": summary_file,
-        "summary": {},
-        "previous_hash": previous_hash,
-    }
+dossier = build_dossier(
+    risk_result=risk_result,
+    summary_file=summary_file,
+    previous_hash=previous_hash,
+)
 
-    # REGULATORY CONTEXT
-    core_dossier["regulatory_context"] = {
-        "rules_version": "1.0",
-        "rules_hash": "abc123"
-    }
+with open(dossier_file, "w", encoding="utf-8") as f:
+    json.dump(dossier, f, indent=2, ensure_ascii=False)
 
-    # EXECUTION PATH
-    core_dossier["execution_path"] = {
-        "pipeline_id": "06-14-22-30-46-61"
-    }
+print(f"Dossier salvato in: {dossier_file}")
 
-    # RISK DECISION (IMPORTANTE)
-    core_dossier["risk_decision"] = {
-        "risk_score": risk_result["risk_score"],
-        "status": risk_result["status"],
-        "hard_block": risk_result["hard_block"],
-        "reasons": risk_result["reasons"],
-        "recommended_action": risk_result["recommended_action"]
-    }
+# ============================
+# LEDGER ENTRY
+# ============================
+ledger_file = "ledger.jsonl"
 
-    # HASH + FIRMA
-    dossier_hash = canonical_hash(core_dossier)
-    signature = sign_hash_with_openssl(dossier_hash, "private_key.pem")
+prev_entry_hash = None
+if Path(ledger_file).exists():
+    with open(ledger_file, "r") as lf:
+        lines = lf.readlines()
+        if lines:
+            last_entry = json.loads(lines[-1])
+            prev_entry_hash = last_entry.get("entry_hash")
 
-    dossier = dict(core_dossier)
-    dossier["dossier_hash"] = dossier_hash
-    dossier["signature"] = signature
+ledger_entry = {
+    "logged_at_utc": datetime.now(timezone.utc).isoformat(),
+    "dossier_file": dossier_file,
+    "summary_file": summary_file,
+    "dossier_hash": dossier["dossier_hash"],
+    "previous_hash": prev_entry_hash,
+    "fiscal_file": fiscal_file,
+    "verification_status": "OK",
 
-    with open(dossier_file, "w", encoding="utf-8") as f:
-        json.dump(dossier, f, indent=2, ensure_ascii=False)
+    # 🔥 RISK NEL LEDGER
+    "risk_score": risk_result["risk_score"],
+    "risk_status": risk_result["status"],
+    "risk_reasons": risk_result["reasons"],
+    "recommended_action": risk_result["recommended_action"],
+}
 
-    print(f"Dossier salvato in: {dossier_file}")
+entry_string = json.dumps(ledger_entry, sort_keys=True, ensure_ascii=False)
+entry_hash = hashlib.sha256(entry_string.encode("utf-8")).hexdigest()
 
-    # =========================
-    # LEDGER ENTRY
-    # =========================
-    ledger_file = "ledger.jsonl"
+ledger_entry["entry_hash"] = entry_hash
 
-    prev_entry_hash = None
-    if Path(ledger_file).exists():
-        with open(ledger_file, "r") as lf:
-            lines = lf.readlines()
-            if lines:
-                last_entry = json.loads(lines[-1])
-                prev_entry_hash = last_entry.get("entry_hash")
+with open(ledger_file, "a", encoding="utf-8") as lf:
+    lf.write(json.dumps(ledger_entry, ensure_ascii=False) + "\n")
 
-    ledger_entry = {
-        "logged_at_utc": datetime.now(timezone.utc).isoformat(),
-        "dossier_file": dossier_file,
-        "summary_file": summary_file,
-        "dossier_hash": dossier_hash,
-        "previous_hash": previous_hash,
-        "fiscal_file": fiscal_file,
-        "verification_status": "OK",
-
-        # 🔥 RISK NEL LEDGER
-        "risk_score": risk_result["risk_score"],
-        "risk_status": risk_result["status"],
-        "risk_reasons": risk_result["reasons"],
-        "recommended_action": risk_result["recommended_action"],
-
-        "prev_entry_hash": prev_entry_hash
-    }
-
-    entry_string = json.dumps(ledger_entry, sort_keys=True, ensure_ascii=False)
-    entry_hash = hashlib.sha256(entry_string.encode("utf-8")).hexdigest()
-
-    ledger_entry["entry_hash"] = entry_hash
-
-    with open(ledger_file, "a", encoding="utf-8") as lf:
-        lf.write(json.dumps(ledger_entry, ensure_ascii=False) + "\n")
-
-    print("Ledger aggiornato")
+print("Ledger aggiornato")
 
 # =========================
 # FIRMA DEL LEDGER COMPLETO
@@ -207,4 +172,5 @@ if ledger_path.exists():
     Path(tmp_ledger).unlink(missing_ok=True)
 
     print("Ledger firmato in: ledger.sig")
-    print("\n=== COMPLETATO ===")
+
+print("\n=== COMPLETATO ===")
