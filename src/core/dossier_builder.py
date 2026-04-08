@@ -69,14 +69,19 @@ def build_dossier(risk_result, summary_file, previous_hash=None):
         "previous_hash": previous_hash,
     }
 
-    core_dossier["regulatory_context"] = {
-        "bundle_id": "PHARMA-IT-2026-04-08-v1",
-        "bundle_hash": "dev-bundle-hash",
-        "jurisdiction": "IT",
-        "domain": "PHARMA",
-        "version": "2026.04.08.1"
-    }
+    bundle_domain = "PHARMA"
+    bundle_jurisdiction = "IT"
+    bundle_version = "2026.04.08.1"
+    bundle_id = f"{bundle_domain}-{bundle_jurisdiction}-2026-04-08-v1"
+    bundle_hash = "dev-bundle-hash"
 
+    core_dossier["regulatory_context"] = {
+        "bundle_id": bundle_id,
+        "bundle_hash": bundle_hash,
+        "jurisdiction": bundle_jurisdiction,
+        "domain": bundle_domain,
+        "version": bundle_version
+    }
     core_dossier["execution_path"] = {
         "pipeline_id": "06-14-22-30-46-61"
     }
