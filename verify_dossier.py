@@ -1,110 +1,117 @@
+from pathlib import Path
 import json
 import hashlib
-import base64
+import sys
 import subprocess
-import tempfile
-import glob
 
-def canonical_json(data):
-    return json.dumps(
-        data,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        default=str,
-    )
+from src.core.dossier_builder import canonical_hash
+from src.core.ledger_utils import verify_ledger_chain_full
 
 
-def canonical_hash(data):
-    return hashlib.sha256(canonical_json(data).encode("utf-8")).hexdigest()
+def verify_dossier_file(dossier_path_str):
+    dossier_path = Path(dossier_path_str)
 
-def extract_core_dossier(dossier):
-    return {
-        "dossier_type": dossier.get("dossier_type"),
-        "generated_at_utc": dossier.get("generated_at_utc"),
-        "engine_version": dossier.get("engine_version"),
-        "policy_version": dossier.get("policy_version"),
-        "summary_file": dossier.get("summary_file"),
-        "summary": dossier.get("summary"),
-        "previous_hash": dossier.get("previous_hash"),
-        "regulatory_context": dossier.get("regulatory_context"),
-        "execution_path": dossier.get("execution_path"),
-        "risk_decision": dossier.get("risk_decision"),
-    }
+    if not dossier_path.exists():
+        print(f"❌ Dossier non trovato: {dossier_path}")
+        return 1
 
-def verify_signature(dossier_file, public_key="public_key.pem"):
-    with open(dossier_file, "r", encoding="utf-8") as f:
-        dossier = json.load(f)
+    ledger_path = Path("ledger.jsonl")
+    signature_path = Path("ledger.sig")
 
-    stored_hash = dossier.get("dossier_hash")
-    signature_b64 = dossier.get("signature")
+    print("=== VERIFY DOSSIER ===")
 
-    # ===== CONTROLLI STRUTTURA =====
-    if "regulatory_context" not in dossier:
-        print("❌ MISSING regulatory_context")
-        return
+    if not ledger_path.exists():
+        print("❌ Ledger assente")
+        return 1
 
-    if "rules_version" not in dossier["regulatory_context"]:
-        print("❌ MISSING rules_version")
-        return
+    if not signature_path.exists():
+        print("❌ Firma ledger assente")
+        return 1
 
-    if "rules_hash" not in dossier["regulatory_context"]:
-        print("❌ MISSING rules_hash")
-        return
+    print("1) Verifica chain ledger...")
+    try:
+        verify_ledger_chain_full(ledger_path)
+        print("✅ Chain ledger valida")
+    except Exception as e:
+        print(f"❌ Chain ledger non valida: {e}")
+        return 1
 
-    if "execution_path" not in dossier:
-        print("❌ MISSING execution_path")
-        return
-
-    if "pipeline_id" not in dossier["execution_path"]:
-        print("❌ MISSING pipeline_id")
-        return
-
-    if not stored_hash or not signature_b64:
-        print("❌ DOSSIER INCOMPLETO")
-        return
-
-    core_dossier = extract_core_dossier(dossier)
-    recalculated_hash = canonical_hash(core_dossier)
-
-    print("Stored hash:", stored_hash)
-    print("Recalculated hash:", recalculated_hash)
-
-    if stored_hash != recalculated_hash:
-        print("❌ HASH NON CORRISPONDE (FILE TAMPERED)")
-        return
-
-    signature = base64.b64decode(signature_b64)
-
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_data:
-        tmp_data.write(stored_hash.encode("utf-8"))
-        tmp_data_path = tmp_data.name
-
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_sig:
-        tmp_sig.write(signature)
-        tmp_sig_path = tmp_sig.name
-
-    result = subprocess.run(
-        [
-            "openssl", "dgst", "-sha256",
-            "-verify", public_key,
-            "-signature", tmp_sig_path,
-            tmp_data_path
-        ],
+    print("2) Verifica firma ledger...")
+    signature_check = subprocess.run(
+        ["python3", "src/core/verify_ledger_signature.py"],
         capture_output=True,
         text=True
     )
 
-    if "Verified OK" in result.stdout:
-        print("✔ SIGNATURE VALIDA")
+    if signature_check.stdout:
+        print(signature_check.stdout.strip())
+
+    if signature_check.returncode != 0:
+        print("❌ Firma ledger non valida")
+        if signature_check.stderr:
+            print(signature_check.stderr.strip())
+        return 1
+
+    print("✅ Firma ledger valida")
+
+    print("3) Carico dossier...")
+    with open(dossier_path, "r", encoding="utf-8") as f:
+        dossier = json.load(f)
+
+    dossier_hash_in_file = dossier.get("dossier_hash")
+    if not dossier_hash_in_file:
+        print("❌ dossier_hash mancante nel dossier")
+        return 1
+
+    dossier_copy = dict(dossier)
+    dossier_copy.pop("dossier_hash", None)
+    dossier_copy.pop("signature", None)
+
+    computed_dossier_hash = canonical_hash(dossier_copy)
+
+    if computed_dossier_hash != dossier_hash_in_file:
+        print("❌ Hash dossier non valido")
+        print(f"Atteso:   {dossier_hash_in_file}")
+        print(f"Calcolato:{computed_dossier_hash}")
+        return 1
+
+    print("✅ Hash dossier valido")
+
+    print("4) Cerco dossier nel ledger...")
+    found = False
+    matched_entry = None
+
+    with open(ledger_path, "r", encoding="utf-8") as f:
+        for line in f:
+            entry = json.loads(line)
+            if entry.get("dossier_hash") == dossier_hash_in_file:
+                found = True
+                matched_entry = entry
+                break
+
+    if not found:
+        print("❌ Dossier non presente nel ledger")
+        return 1
+
+    print("✅ Dossier presente nel ledger")
+
+    print("5) Verifica coerenza file...")
+    ledger_dossier_file = matched_entry.get("dossier_file")
+    if ledger_dossier_file and Path(ledger_dossier_file).name != dossier_path.name:
+        print("⚠️ Hash presente nel ledger, ma nome file diverso")
+        print(f"Ledger: {ledger_dossier_file}")
+        print(f"Input:  {dossier_path}")
     else:
-        print("❌ SIGNATURE NON VALIDA")
+        print("✅ Coerenza file ok")
+
+    print("\n=== ESITO FINALE ===")
+    print("✅ DOSSIER CERTIFICATO E VERIFICATO")
+    return 0
 
 
 if __name__ == "__main__":
-    files = sorted(glob.glob("validation_output/dossier_*.json"), reverse=True)
+    if len(sys.argv) != 2:
+        print("Uso: python3 verify_dossier.py <percorso_dossier.json>")
+        sys.exit(1)
 
-    if not files:
-        print("❌ Nessun dossier trovato")
-    else:
-        verify_signature(files[0])
+    sys.exit(verify_dossier_file(sys.argv[1]))
