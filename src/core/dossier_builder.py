@@ -79,10 +79,12 @@ def build_dossier(risk_result, summary_file, previous_hash=None):
     bundle_version = bundle_data["version"]
     bundle_id = bundle_data["bundle_id"]
     bundle_hash = canonical_hash(bundle_data)
+    bundle_signature = sign_data(canonical_json(bundle_data).encode("utf-8"), "private_key.pem")
 
     core_dossier["regulatory_context"] = {
         "bundle_id": bundle_id,
         "bundle_hash": bundle_hash,
+        "bundle_signature": bundle_signature,
         "jurisdiction": bundle_jurisdiction,
         "domain": bundle_domain,
         "version": bundle_version
