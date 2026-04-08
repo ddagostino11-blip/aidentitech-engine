@@ -69,11 +69,16 @@ def build_dossier(risk_result, summary_file, previous_hash=None):
         "previous_hash": previous_hash,
     }
 
-    bundle_domain = "PHARMA"
-    bundle_jurisdiction = "IT"
-    bundle_version = "2026.04.08.1"
-    bundle_id = f"{bundle_domain}-{bundle_jurisdiction}-2026-04-08-v1"
-    bundle_hash = "dev-bundle-hash"
+    bundle_file = Path("regulatory_bundles/pharma_it.json")
+
+    with open(bundle_file, "r", encoding="utf-8") as f:
+        bundle_data = json.load(f)
+
+    bundle_domain = bundle_data["domain"]
+    bundle_jurisdiction = bundle_data["jurisdiction"]
+    bundle_version = bundle_data["version"]
+    bundle_id = bundle_data["bundle_id"]
+    bundle_hash = canonical_hash(bundle_data)
 
     core_dossier["regulatory_context"] = {
         "bundle_id": bundle_id,

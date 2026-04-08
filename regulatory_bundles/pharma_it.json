@@ -1,0 +1,11 @@
+{
+  "bundle_id": "PHARMA-IT-2026-04-08-v1",
+  "jurisdiction": "IT",
+  "domain": "PHARMA",
+  "version": "2026.04.08.1",
+  "rules": [
+    "GDP compliance",
+    "Batch traceability",
+    "Temperature control"
+  ]
+}
