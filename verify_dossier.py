@@ -55,86 +55,110 @@ def verify_dossier_signature(dossier):
 # =========================  
 # VERIFY DOSSIER  
 # =========================  
-def verify_dossier(dossier_path):  
-    print("\n=== VERIFY DOSSIER ===")  
+def verify_dossier(dossier_path):
+    print("\n=== VERIFY DOSSIER ===")
 
-    # 1) Carico dossier  
-    print("1) Carico dossier...")  
-    with open(dossier_path, "r", encoding="utf-8") as f:  
-        dossier = json.load(f)  
+    # 1) Carico dossier
+    print("1) Carico dossier...")
+    with open(dossier_path, "r", encoding="utf-8") as f:
+        dossier = json.load(f)
 
-    # 2) Verifica chain ledger  
-    print("2) Verifica chain ledger...")  
-    chain_check = subprocess.run(  
-        ["python3", "src/core/verify_ledger.py"],  
-        capture_output=True,  
-        text=True  
-    )  
-    print(chain_check.stdout)  
+    # 2) Verifica chain ledger
+    print("2) Verifica chain ledger...")
+    chain_check = subprocess.run(
+        ["python3", "src/core/verify_ledger.py"],
+        capture_output=True,
+        text=True
+    )
+    print(chain_check.stdout)
 
-    if chain_check.returncode != 0:  
-        print("❌ Chain ledger non valida")  
-        raise SystemExit(1)  
+    if chain_check.returncode != 0:
+        print("❌ Chain ledger non valida")
+        raise SystemExit(1)
 
-    print("✅ Ledger integro")  
+    print("✅ Ledger integro")
 
-    # 3) Verifica firma ledger  
-    print("3) Verifica firma ledger...")  
-    sig_check = subprocess.run(  
-        ["python3", "src/core/verify_ledger_signature.py"],  
-        capture_output=True,  
-        text=True  
-    )  
-    print(sig_check.stdout)  
+    # 3) Verifica firma ledger
+    print("3) Verifica firma ledger...")
+    sig_check = subprocess.run(
+        ["python3", "src/core/verify_ledger_signature.py"],
+        capture_output=True,
+        text=True
+    )
+    print(sig_check.stdout)
 
-    if sig_check.returncode != 0:  
-        print("❌ Firma ledger non valida")  
-        raise SystemExit(1)  
+    if sig_check.returncode != 0:
+        print("❌ Firma ledger non valida")
+        raise SystemExit(1)
 
-    # 4) Verifica hash dossier  
-    print("4) Verifica hash dossier...")  
-    dossier_copy = dict(dossier)  
-    expected_hash = dossier_copy.pop("dossier_hash")  
+    print("✅ Firma ledger valida")
 
-    if "signature" in dossier_copy:  
-        dossier_copy.pop("signature")  
+    # 4) Verifica hash dossier
+    print("4) Verifica hash dossier...")
+    dossier_copy = dict(dossier)
+    expected_hash = dossier_copy.pop("dossier_hash")
 
-    computed_hash = canonical_hash(dossier_copy)  
+    if "signature" in dossier_copy:
+        dossier_copy.pop("signature")
 
-    if computed_hash != expected_hash:  
-        print("❌ Hash dossier NON valido")  
-        raise SystemExit(1)  
+    computed_hash = canonical_hash(dossier_copy)
 
-    print("✅ Hash dossier valido")  
+    if computed_hash != expected_hash:
+        print("❌ Hash dossier NON valido")
+        raise SystemExit(1)
 
-    # 5) Verifica presenza nel ledger  
-    print("5) Cerco dossier nel ledger...")  
-    found = False  
+    print("✅ Hash dossier valido")
 
-    with open("ledger.jsonl", "r", encoding="utf-8") as f:  
-        for line in f:  
-            entry = json.loads(line)  
-            if entry.get("dossier_hash") == expected_hash:  
-                found = True  
-                break  
+    # 5) Verifica presenza nel ledger
+    print("5) Cerco dossier nel ledger...")
+    found = False
 
-    if not found:  
-        print("❌ Dossier NON presente nel ledger")  
-        raise SystemExit(1)  
+    with open("ledger.jsonl", "r", encoding="utf-8") as f:
+        for line in f:
+            entry = json.loads(line)
+            if entry.get("dossier_hash") == expected_hash:
+                found = True
+                break
 
-    print("✅ Dossier presente nel ledger")  
+    if not found:
+        print("❌ Dossier NON presente nel ledger")
+        raise SystemExit(1)
 
-    # 6) Verifica firma dossier  
-    print("6) Verifica firma dossier...")  
-    if not verify_dossier_signature(dossier):  
-        print("❌ Firma dossier NON valida")  
-        raise SystemExit(1)  
+    print("✅ Dossier presente nel ledger")
 
-    print("✅ Firma dossier valida")  
+    # 6) Verifica firma bundle
+    print("6) Verifica firma bundle...")
 
-    print("\n=== ESITO FINALE ===")  
-    print("✅ DOSSIER CERTIFICATO E VERIFICATO")  
+    bundle_ctx = dossier.get("regulatory_context", {})
+    bundle_signature = bundle_ctx.get("bundle_signature")
 
+    if not bundle_signature:
+        print("❌ bundle_signature mancante")
+        raise SystemExit(1)
+
+    bundle_file = "regulatory_bundles/pharma_it.json"
+
+    with open(bundle_file, "r", encoding="utf-8") as f:
+        bundle_data = json.load(f)
+
+    bundle_bytes = canonical_json(bundle_data).encode("utf-8")
+
+    if not verify_signature(bundle_bytes, bundle_signature, "public_key.pem"):
+        print("❌ Firma bundle NON valida")
+        raise SystemExit(1)
+
+    print("✅ BUNDLE SIGNATURE VALIDA")
+
+    # 7) Verifica firma dossier
+    print("7) Verifica firma dossier...")
+    if not verify_dossier_signature(dossier):
+        print("❌ Firma dossier NON valida")
+        raise SystemExit(1)
+
+    print("✅ Firma dossier valida")
+
+    print("\n=== ESITO FINALE ===")
+    print("✅ DOSSIER CERTIFICATO E VERIFICATO")
 
 # =========================  
 # MAIN  
