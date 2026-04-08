@@ -48,6 +48,28 @@ def sign_hash_with_openssl(hash_hex, private_key_path):
 
     return signature
 
+def sign_json_with_openssl(data, private_key_path):
+    payload = canonical_json(data)
+    tmp_file = "tmp_payload.json"
+    sig_file = "tmp_sig.bin"
+
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        f.write(payload)
+
+    subprocess.run([
+        "openssl", "dgst", "-sha256",
+        "-sign", private_key_path,
+        "-out", sig_file,
+        tmp_file
+    ], check=True)
+
+    with open(sig_file, "rb") as f:
+        signature = base64.b64encode(f.read()).decode()
+
+    Path(tmp_file).unlink(missing_ok=True)
+    Path(sig_file).unlink(missing_ok=True)
+
+    return signature
 
 # =========================
 # BUILD DOSSIER
@@ -81,7 +103,7 @@ def build_dossier(risk_result, summary_file, previous_hash=None):
     }
 
     dossier_hash = canonical_hash(core_dossier)
-    signature = sign_hash_with_openssl(dossier_hash, "private_key.pem")
+    signature = sign_json_with_openssl(core_dossier, "private_key.pem")
 
     dossier = dict(core_dossier)
     dossier["dossier_hash"] = dossier_hash
