@@ -4,6 +4,7 @@ import hashlib
 import subprocess
 import base64
 from pathlib import Path
+from src.core.crypto_utils import sign_data
 
 
 # =========================
@@ -24,7 +25,7 @@ def canonical_hash(data):
 
 
 # =========================
-# FIRMA RSA CON OPENSSL
+# FIRMA RSA
 # =========================
 def sign_hash_with_openssl(hash_hex, private_key_path):
     tmp_file = "tmp_hash.txt"
@@ -48,28 +49,11 @@ def sign_hash_with_openssl(hash_hex, private_key_path):
 
     return signature
 
+
 def sign_json_with_openssl(data, private_key_path):
-    payload = canonical_json(data)
-    tmp_file = "tmp_payload.json"
-    sig_file = "tmp_sig.bin"
+    payload = canonical_json(data).encode("utf-8")
+    return sign_data(payload, private_key_path)
 
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        f.write(payload)
-
-    subprocess.run([
-        "openssl", "dgst", "-sha256",
-        "-sign", private_key_path,
-        "-out", sig_file,
-        tmp_file
-    ], check=True)
-
-    with open(sig_file, "rb") as f:
-        signature = base64.b64encode(f.read()).decode()
-
-    Path(tmp_file).unlink(missing_ok=True)
-    Path(sig_file).unlink(missing_ok=True)
-
-    return signature
 
 # =========================
 # BUILD DOSSIER
