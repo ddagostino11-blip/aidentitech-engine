@@ -37,7 +37,7 @@ def preflight_security_check():
     print("Verifica integrità ledger in corso...")
 
     ledger_check = subprocess.run(
-        ["python3", "verify_ledger.py"],
+        ["python3", "src/core/verify_ledger.py"],
         capture_output=True,
         text=True
     )
@@ -59,7 +59,7 @@ def preflight_security_check():
     print("Verifica firma ledger in corso...")
 
     signature_check = subprocess.run(
-        ["python3", "verify_ledger_signature.py"],
+        ["python3", "src/core/verify_ledger_signature.py"],
         capture_output=True,
         text=True
     )
