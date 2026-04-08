@@ -5,7 +5,14 @@ import hashlib
 import subprocess
 import base64
 
-from core.dossier_builder import canonical_json, canonical_hash, sign_hash_with_openssl, build_dossier
+from core.dossier_builder import (
+    canonical_json,
+    canonical_hash,
+    sign_hash_with_openssl,
+    build_dossier,
+)
+
+from core.ledger_utils import verify_ledger_chain_full
 
 # =========================
 # PREFLIGHT SICUREZZA LEDGER
@@ -112,6 +119,7 @@ print(f"Dossier salvato in: {dossier_file}")
 # LEDGER ENTRY
 # ============================
 ledger_file = "ledger.jsonl"
+verify_ledger_chain_full(ledger_file)
 
 prev_entry_hash = None
 if Path(ledger_file).exists():

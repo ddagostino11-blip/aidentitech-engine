@@ -88,3 +88,35 @@ def build_dossier(risk_result, summary_file, previous_hash=None):
     dossier["signature"] = signature
 
     return dossier
+
+
+# =========================
+# VERIFY LEDGER CHAIN
+# =========================
+def verify_ledger_chain(ledger_file):
+    if not Path(ledger_file).exists():
+        return True
+
+    with open(ledger_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    prev_hash = None
+
+    for i, line in enumerate(lines):
+        entry = json.loads(line)
+
+        entry_copy = dict(entry)
+        entry_hash = entry_copy.pop("entry_hash", None)
+
+        entry_string = json.dumps(entry_copy, sort_keys=True, ensure_ascii=False)
+        computed_hash = hashlib.sha256(entry_string.encode("utf-8")).hexdigest()
+
+        if entry_hash != computed_hash:
+            raise ValueError(f"Ledger corrotto alla riga {i}")
+
+        if entry_copy.get("previous_hash") != prev_hash:
+            raise ValueError(f"Chain rotta alla riga {i}")
+
+        prev_hash = entry_hash
+
+    return True
