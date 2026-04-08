@@ -134,7 +134,6 @@ ledger_entry = {
     "previous_hash": prev_entry_hash,
     "fiscal_file": fiscal_file,
     "verification_status": "OK",
-    "engine_version": "2.0",
 
     # 🔥 RISK NEL LEDGER
     "risk_score": risk_result["risk_score"],
