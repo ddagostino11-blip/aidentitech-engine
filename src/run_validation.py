@@ -5,21 +5,7 @@ import hashlib
 import subprocess
 import base64
 
-# =========================
-# CANONICAL JSON + HASH
-# =========================
-def canonical_json(data):
-    return json.dumps(
-        data,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        default=str,
-    )
-
-def canonical_hash(data):
-    return hashlib.sha256(canonical_json(data).encode("utf-8")).hexdigest()
-
+from core.dossier_builder import canonical_json, canonical_hash
 
 # =========================
 # PREFLIGHT SICUREZZA LEDGER
