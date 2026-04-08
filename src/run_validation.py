@@ -23,28 +23,25 @@ def preflight_security_check():
     ledger_path = Path("ledger.jsonl")
     signature_path = Path("ledger.sig")
 
+    # Prima esecuzione
     if not ledger_path.exists():
         print("Ledger assente: prima esecuzione")
         return
 
+    # =========================
+    # VERIFICA CHAIN COMPLETA
+    # =========================
     print("Verifica integrità ledger in corso...")
 
-    ledger_check = subprocess.run(
-        ["python3", "src/core/verify_ledger.py"],
-        capture_output=True,
-        text=True
-)
-
-    print(ledger_check.stdout)
-
-    if ledger_check.returncode != 0:
+    if not verify_ledger_chain_full(ledger_path):
         print("❌ BLOCCO SICUREZZA: ledger non integro")
-        if ledger_check.stderr:
-            print(ledger_check.stderr)
         exit(1)
 
     print("✅ Ledger integro")
 
+    # =========================
+    # VERIFICA FIRMA
+    # =========================
     if not signature_path.exists():
         print("❌ BLOCCO SICUREZZA: firma ledger mancante")
         exit(1)
@@ -55,7 +52,7 @@ def preflight_security_check():
         ["python3", "src/core/verify_ledger_signature.py"],
         capture_output=True,
         text=True
-)
+    )
 
     print(signature_check.stdout)
 
