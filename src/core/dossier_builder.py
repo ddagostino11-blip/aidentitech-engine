@@ -70,8 +70,11 @@ def build_dossier(risk_result, summary_file, previous_hash=None):
     }
 
     core_dossier["regulatory_context"] = {
-        "rules_version": "1.0",
-        "rules_hash": "abc123"
+        "bundle_id": "PHARMA-IT-2026-04-08-v1",
+        "bundle_hash": "dev-bundle-hash",
+        "jurisdiction": "IT",
+        "domain": "PHARMA",
+        "version": "2026.04.08.1"
     }
 
     core_dossier["execution_path"] = {
