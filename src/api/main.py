@@ -1,3 +1,5 @@
+from typing import Optional, List
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, model_validator
 import importlib
@@ -15,6 +17,9 @@ class ValidateRequest(BaseModel):
     product_id: str
     module: str
     payload: dict
+
+    # NUOVO: framework selezionabili lato cliente
+    frameworks: Optional[List[str]] = None
 
     @model_validator(mode="after")
     def validate_payload_for_module(self):
@@ -50,6 +55,7 @@ def load_module_config(module_name: str):
             status_code=400,
             detail=f"Modulo non valido: {module_name}"
         )
+
 
 @app.get("/")
 def root():
@@ -88,6 +94,10 @@ def validate(request: ValidateRequest):
     try:
         config = load_config()
         module_config = load_module_config(request.module)
+
+        # NUOVO: framework selezionati dal client
+        frameworks = request.frameworks or []
+        module_config["selected_frameworks"] = frameworks
 
         result = execute_validation(
             config=config,

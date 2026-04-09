@@ -5,10 +5,20 @@ from src.modules.pharma.policy import apply_policy
 
 def _normalize_pharma_rules(module_config: dict) -> list:
     rules_config = module_config.get("rules", {})
+    selected_frameworks = module_config.get("selected_frameworks", []) or []
+
     normalized_rules = []
 
-    # 🔁 Loop su tutti i framework (GMP, ICH, ecc.)
-    for framework_name, framework_rules in rules_config.items():
+    # Se non viene passato nulla, usa tutti i framework disponibili
+    frameworks_to_use = (
+        selected_frameworks if selected_frameworks else list(rules_config.keys())
+    )
+
+    for framework_name in frameworks_to_use:
+        framework_rules = rules_config.get(framework_name, {})
+
+        if not framework_rules:
+            continue
 
         # REQUIRED FIELDS
         for field in framework_rules.get("required_fields", []):
@@ -38,6 +48,7 @@ def _normalize_pharma_rules(module_config: dict) -> list:
             })
 
     return normalized_rules
+
 
 def _severity_rank(severity: str) -> int:
     ranking = {
@@ -106,7 +117,8 @@ def run(module_config: dict, payload: dict):
             "actual_value": payload.get(rule.get("field")),
             "threshold": rule.get("expected"),
             "severity": rule.get("severity", "LOW"),
-            "recommended_action": rule.get("recommended_action", "RELEASE_BATCH")
+            "recommended_action": rule.get("recommended_action", "RELEASE_BATCH"),
+            "framework": rule.get("framework")
         }
 
         result["issues"].append(issue)
@@ -142,7 +154,7 @@ def run(module_config: dict, payload: dict):
         result["regulatory_impact"] = "LOW"
         result["batch_disposition"] = "RELEASED"
 
-    # 👉 AGGIUNTA FONDAMENTALE (STATUS + OUTPUT)
+    # STATUS + OUTPUT
     if result["severity"] == "HIGH":
         result["status"] = "REJECTED"
         result["output_type"] = "NOT_APPROVED"
