@@ -5,7 +5,6 @@ from src.modules.pharma.policy import apply_policy
 
 def _normalize_pharma_rules(module_config: dict) -> list:
 
-    # FIX: se arriva come stringa (errore loader), converti in dict
     if isinstance(module_config, str):
         import json
         module_config = json.loads(module_config)
@@ -15,7 +14,6 @@ def _normalize_pharma_rules(module_config: dict) -> list:
 
     normalized_rules = []
 
-    # Se non viene passato nulla, usa tutti i framework disponibili
     frameworks_to_use = (
         selected_frameworks if selected_frameworks else list(rules_config.keys())
     )
@@ -57,36 +55,34 @@ def _normalize_pharma_rules(module_config: dict) -> list:
 
 
 def _severity_rank(severity: str) -> int:
-    ranking = {
+    return {
         "LOW": 1,
         "MEDIUM": 2,
         "HIGH": 3,
         "CRITICAL": 4
-    }
-    return ranking.get(severity, 0)
+    }.get(severity, 0)
 
 
 def _status_rank(status: str) -> int:
-    ranking = {
+    return {
         "APPROVED": 1,
         "WARNING": 2,
         "REJECTED": 3,
         "CRITICAL": 4
-    }
-    return ranking.get(status, 0)
+    }.get(status, 0)
 
 
 def _action_rank(action: str) -> int:
-    ranking = {
+    return {
         "RELEASE_BATCH": 1,
         "QUALITY_REVIEW": 2,
         "HOLD_BATCH": 3,
         "BLOCK_AND_ESCALATE": 4
-    }
-    return ranking.get(action, 0)
+    }.get(action, 0)
 
 
 def run(module_config: dict, payload: dict):
+
     if isinstance(module_config, str):
         import json
         module_config = json.loads(module_config)
@@ -95,7 +91,7 @@ def run(module_config: dict, payload: dict):
     compliance_scope = module_config.get("compliance_scope", {})
     engine_result = evaluate_rules(payload, normalized_rules)
 
-    # BASE RESULT (contratto API stabile)
+    # BASE RESULT
     result = {
         "risk_score": 0,
         "issues": [],
@@ -106,7 +102,8 @@ def run(module_config: dict, payload: dict):
         "review_required": False,
         "regulatory_impact": "LOW",
         "batch_disposition": "RELEASED",
-        "compliance_scope": compliance_scope
+        "compliance_scope": compliance_scope,
+        "ruleset_id": module_config.get("ruleset_id")  # 👈 AGGIUNTO QUI
     }
 
     # BUILD ISSUES + RISK
@@ -134,10 +131,10 @@ def run(module_config: dict, payload: dict):
         result["issues"].append(issue)
         result["risk_score"] += rule.get("risk_score", 0)
 
-    # DECISION LOGIC (SOLO SEVERITY)
+    # DECISION LOGIC
     blocking_issues = [
         i for i in result["issues"]
-        if i.get("severity") == "HIGH"
+        if i.get("severity") in ["HIGH", "CRITICAL"]
     ]
 
     if blocking_issues:
@@ -180,10 +177,13 @@ def run(module_config: dict, payload: dict):
         result["output_type"] = "AUDIT_READY"
         result["execution_allowed"] = True
 
+    # POLICY LAYER
+    result = apply_policy(result, module_config, payload)
+
     # EXPLANATION
     result["explanation"] = build_explanation(result)
 
-    # PAYLOAD TRACE
+    # TRACE
     result["payload_received"] = payload
 
     return result

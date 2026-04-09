@@ -26,6 +26,7 @@ def get_pharma_config():
         "policy_version": "2.0",
         "rules_version": rules_version,
         "rules_hash": rules_hash,
+        "ruleset_id": "pharma-eu-gmp-v1",  # 👈 NUOVO
         "pipeline_id": "pharma-pipeline-004",
 
         # METADATA
@@ -33,6 +34,13 @@ def get_pharma_config():
             "domain": "pharma",
             "jurisdictions": ["EU", "US"],
             "authorities": ["EMA", "FDA"]
+        },
+
+        # REGULATORY CONTEXT
+        "regulatory_context": {
+            "region": "EU",
+            "authority": "EMA",
+            "country": "IT"
         },
 
         # COMPLIANCE SCOPE (INTERNAL IDS)
@@ -61,7 +69,8 @@ def get_pharma_config():
             "engine_version": "1.0",
             "policy_version": "2.0",
             "rules_version": rules_version,
-            "rules_hash": rules_hash
+            "rules_hash": rules_hash,
+            "ruleset_id": "pharma-eu-gmp-v1"  # 👈 COERENTE
         },
 
         # DEFAULT RISK OUTPUT
