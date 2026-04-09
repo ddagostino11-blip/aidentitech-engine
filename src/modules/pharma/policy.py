@@ -1,19 +1,16 @@
 import json
 from pathlib import Path
 
+from src.shared.regulatory_state import (
+    get_domain_state,
+    get_freeze_metadata,
+    is_domain_frozen,
+)
+
 
 def _load_impact_registry():
     try:
         path = Path("src/shared/impact_registry.json")
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _load_regulatory_state():
-    try:
-        path = Path("src/shared/regulatory_state.json")
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
@@ -27,7 +24,9 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
     if not isinstance(module_config, dict):
         module_config = {}
 
-    if payload is not None and not isinstance(payload, dict):
+    if payload is None:
+        payload = {}
+    elif not isinstance(payload, dict):
         payload = {}
 
     result = dict(decision)
@@ -36,11 +35,10 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
     # LOAD EXTERNAL REGISTRIES
     # =========================
     impact_registry = _load_impact_registry()
-    regulatory_state = _load_regulatory_state()
 
     module_name = module_config.get("module_name", "pharma")
-
-    module_state = regulatory_state.get(module_name, {})
+    module_state = get_domain_state(module_name)
+    freeze_metadata = get_freeze_metadata(module_name)
     module_impacts = impact_registry.get(module_name, {})
 
     # =========================
@@ -54,27 +52,41 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
     authority = regulatory_context.get("authority", "UNKNOWN")
 
     # =========================
-    # 🚨 REGULATORY FREEZE CHECK
+    # 🚨 CENTRALIZED RUNTIME FREEZE CHECK
     # =========================
-    if module_state.get("freeze_active") is True:
+    if is_domain_frozen(module_name):
         freeze_impact = module_impacts.get("REGULATORY_FREEZE", {})
 
         result.update({
             "status": "FROZEN",
             "severity": freeze_impact.get("severity", "CRITICAL"),
             "decision_code": "REGULATORY_FREEZE",
-            "recommended_action": freeze_impact.get("recommended_action", "ESCALATE"),
+            "recommended_action": freeze_impact.get("recommended_action", "ESCALATE_IMMEDIATELY"),
             "regulatory_impact": "CRITICAL",
             "batch_disposition": "BLOCKED",
             "execution_allowed": freeze_impact.get("execution_allowed", False),
             "output_type": "REGULATORY_BLOCK",
-            "review_required": True
+            "review_required": True,
+            "hard_block": True,
+            "freeze_active": True,
+            "freeze_reason": freeze_metadata.get("freeze_reason"),
+            "freeze_timestamp": freeze_metadata.get("freeze_timestamp"),
+            "triggered_by": freeze_metadata.get("triggered_by"),
+        })
+
+        result["issues"] = result.get("issues", [])
+        result["issues"].append({
+            "code": "REGULATORY_FREEZE",
+            "severity": freeze_impact.get("severity", "CRITICAL"),
+            "recommended_action": freeze_impact.get("recommended_action", "ESCALATE_IMMEDIATELY"),
+            "details": "Module execution blocked by centralized Sentinel regulatory freeze."
         })
 
         result["policy_profile"] = "regulatory_override"
         result["regulatory_context"] = regulatory_context
         result["region"] = region
         result["authority"] = authority
+        result["module_state"] = module_state
 
         return result
 
@@ -92,6 +104,7 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
         result["regulatory_context"] = regulatory_context
         result["region"] = region
         result["authority"] = authority
+        result["module_state"] = module_state
         return result
 
     if profile == "strict":
@@ -140,5 +153,7 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
     result["regulatory_context"] = regulatory_context
     result["region"] = region
     result["authority"] = authority
+    result["module_state"] = module_state
+    result["freeze_active"] = False
 
     return result
