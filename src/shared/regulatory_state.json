@@ -1,0 +1,14 @@
+{
+  "pharma": {
+    "region": "EU",
+    "authority": "EMA",
+    "country": "IT",
+    "ruleset_id": "pharma-eu-gmp-v1",
+    "effective_date": "2026-04-09",
+    "status": "ACTIVE",
+    "freeze_active": false,
+    "freeze_reason": null,
+    "freeze_timestamp": null,
+    "triggered_by": null
+  }
+}

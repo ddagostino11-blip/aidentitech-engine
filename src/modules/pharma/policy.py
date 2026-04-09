@@ -1,41 +1,38 @@
 def apply_policy(decision: dict, module_config: dict, payload: dict | None = None) -> dict:
-    # SAFE GUARDS
     if not isinstance(decision, dict):
         return decision or {}
 
     if not isinstance(module_config, dict):
         module_config = {}
 
-    if payload and not isinstance(payload, dict):
+    if payload is not None and not isinstance(payload, dict):
         payload = {}
 
     policy = module_config.get("policy", {})
     profile = policy.get("profile", "default")
-
-    # REGULATORY CONTEXT (NEW)
-    regulatory_context = (
-        payload.get("regulatory_context")
-        if payload and isinstance(payload, dict)
-        else module_config.get("regulatory_context", {})
-    )
-
-    region = regulatory_context.get("region", "UNKNOWN")
-    authority = regulatory_context.get("authority", "UNKNOWN")
 
     result = dict(decision)
 
     issues = result.get("issues", []) or []
     max_severity = result.get("severity", "LOW")
 
-    # NO ISSUES → FAST EXIT
+    payload_regulatory_context = {}
+    if isinstance(payload, dict):
+        payload_regulatory_context = payload.get("regulatory_context") or {}
+
+    module_regulatory_context = module_config.get("regulatory_context") or {}
+
+    regulatory_context = payload_regulatory_context or module_regulatory_context or {}
+
+    region = regulatory_context.get("region", "UNKNOWN")
+    authority = regulatory_context.get("authority", "UNKNOWN")
+
     if not issues:
         result["policy_profile"] = profile
         result["regulatory_context"] = regulatory_context
+        result["region"] = region
+        result["authority"] = authority
         return result
-
-    # ----------------------------
-    # POLICY PROFILES
-    # ----------------------------
 
     if profile == "strict":
         if max_severity in ["MEDIUM", "HIGH", "CRITICAL"]:
@@ -48,7 +45,8 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
 
     elif profile == "regulated_high_risk":
         high_or_medium = [
-            i for i in issues if isinstance(i, dict) and i.get("severity") in ["HIGH", "MEDIUM", "CRITICAL"]
+            i for i in issues
+            if isinstance(i, dict) and i.get("severity") in ["MEDIUM", "HIGH", "CRITICAL"]
         ]
 
         if high_or_medium:
@@ -63,7 +61,8 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
 
     elif profile == "lenient":
         only_medium = issues and all(
-            isinstance(i, dict) and i.get("severity") == "MEDIUM" for i in issues
+            isinstance(i, dict) and i.get("severity") == "MEDIUM"
+            for i in issues
         )
 
         if only_medium:
@@ -73,10 +72,6 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
             result["review_required"] = False
             result["regulatory_impact"] = "LOW"
             result["batch_disposition"] = "RELEASED"
-
-    # ----------------------------
-    # REGULATORY ENRICHMENT (NEW)
-    # ----------------------------
 
     result["policy_profile"] = profile
     result["regulatory_context"] = regulatory_context

@@ -1,6 +1,7 @@
 import json
 import hashlib
 from pathlib import Path
+from src.shared.regulatory_state import load_regulatory_state
 
 
 def _compute_rules_hash(rules_data: dict) -> str:
@@ -17,6 +18,9 @@ def get_pharma_config():
     rules_version = rules_data.get("rules_version", "pharma-v1.0.0")
     rules_hash = _compute_rules_hash(rules_data)
 
+    # 🔥 LOAD REGULATORY STATE
+    reg_state = load_regulatory_state().get("pharma", {})
+
     return {
         "module_name": "pharma",
         "dossier_type": "MASTER_PHARMA",
@@ -26,7 +30,7 @@ def get_pharma_config():
         "policy_version": "2.0",
         "rules_version": rules_version,
         "rules_hash": rules_hash,
-        "ruleset_id": "pharma-eu-gmp-v1",  # 👈 NUOVO
+        "ruleset_id": reg_state.get("ruleset_id", rules_version),
         "pipeline_id": "pharma-pipeline-004",
 
         # METADATA
@@ -36,12 +40,15 @@ def get_pharma_config():
             "authorities": ["EMA", "FDA"]
         },
 
-        # REGULATORY CONTEXT
+        # REGULATORY CONTEXT (DYNAMIC)
         "regulatory_context": {
-            "region": "EU",
-            "authority": "EMA",
-            "country": "IT"
+            "region": reg_state.get("region"),
+            "authority": reg_state.get("authority"),
+            "country": reg_state.get("country")
         },
+
+        # 🔥 FREEZE FLAG (FONDAMENTALE)
+        "freeze_active": reg_state.get("freeze_active", False),
 
         # COMPLIANCE SCOPE (INTERNAL IDS)
         "compliance_scope": {
@@ -70,7 +77,7 @@ def get_pharma_config():
             "policy_version": "2.0",
             "rules_version": rules_version,
             "rules_hash": rules_hash,
-            "ruleset_id": "pharma-eu-gmp-v1"  # 👈 COERENTE
+            "ruleset_id": reg_state.get("ruleset_id", rules_version)
         },
 
         # DEFAULT RISK OUTPUT
