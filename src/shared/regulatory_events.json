@@ -72,6 +72,83 @@
       "versioning_status": "versioned",
       "regulatory_state_updated": true,
       "revalidation_triggered": true
+    },
+    {
+      "event_id": "event-3161ccac-50e8-467d-98d5-616710df302c",
+      "delta_id": "c2727d02-4f51-4100-992c-9cb468e6645c",
+      "domain": "pharma",
+      "jurisdiction": "EU",
+      "rule_id": "stability_report_required",
+      "change_type": "rule_created",
+      "impact_level": "HIGH",
+      "priority": "HIGH",
+      "status": "legal_approved",
+      "freeze_active": true,
+      "freeze_reason": "auto_regulatory_high_impact",
+      "created_at": "2026-04-09T17:24:31.628975",
+      "legal_tasks": [
+        {
+          "review_id": "2ce394b8-89af-4f06-a4ba-292de643b750",
+          "status": "pending_review",
+          "priority": "HIGH"
+        }
+      ],
+      "impacts_detected": 0,
+      "legal_review": {
+        "decision": "approve",
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reviewed_at": "2026-04-09T17:37:07.022577"
+      },
+      "approved_at": "2026-04-09T17:37:07.022577",
+      "versioning_status": "versioned",
+      "regulatory_state_updated": true,
+      "revalidation_triggered": true,
+      "processed_at": "2026-04-09T17:37:43.137480"
+    },
+    {
+      "event_id": "event-78c25bb2-236b-4683-b050-af3c192b3db3",
+      "delta_id": "07bdcc7e-b4df-4a5a-ab55-2d357dcecdfb",
+      "domain": "pharma",
+      "jurisdiction": "EU",
+      "rule_id": "temperature_critical_high",
+      "change_type": "rule_updated",
+      "impact_level": "HIGH",
+      "priority": "HIGH",
+      "status": "pending_legal_review",
+      "freeze_active": true,
+      "freeze_reason": "auto_regulatory_high_impact",
+      "created_at": "2026-04-09T17:24:31.629756",
+      "legal_tasks": [
+        {
+          "review_id": "bf237a98-9fde-4dd6-8a12-778e03580860",
+          "status": "pending_review",
+          "priority": "HIGH"
+        }
+      ],
+      "impacts_detected": 1
+    },
+    {
+      "event_id": "event-e9c1939a-93cb-40eb-8812-36644a70076a",
+      "delta_id": "f5276f5e-e5e2-4a8a-bdbd-95a1508bdc67",
+      "domain": "pharma",
+      "jurisdiction": "EU",
+      "rule_id": "temperature_warning_high",
+      "change_type": "rule_updated",
+      "impact_level": "MEDIUM",
+      "priority": "MEDIUM",
+      "status": "pending_legal_review",
+      "freeze_active": false,
+      "freeze_reason": null,
+      "created_at": "2026-04-09T17:24:31.629962",
+      "legal_tasks": [
+        {
+          "review_id": "2be7533a-0a29-44aa-8a2c-35f1b2c168d0",
+          "status": "pending_review",
+          "priority": "MEDIUM"
+        }
+      ],
+      "impacts_detected": 1
     }
   ]
 }
