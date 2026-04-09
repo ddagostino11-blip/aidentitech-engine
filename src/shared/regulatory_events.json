@@ -51,7 +51,7 @@
       "change_type": "rule_updated",
       "impact_level": "MEDIUM",
       "priority": "MEDIUM",
-      "status": "pending_legal_review",
+      "status": "legal_approved",
       "freeze_active": false,
       "created_at": "2026-04-09T16:27:16.491976",
       "legal_tasks": [
@@ -61,7 +61,17 @@
           "priority": "MEDIUM"
         }
       ],
-      "impacts_detected": 1
+      "impacts_detected": 1,
+      "legal_review": {
+        "decision": "approve",
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reviewed_at": "2026-04-09T16:47:44.792263"
+      },
+      "approved_at": "2026-04-09T16:47:44.792263",
+      "versioning_status": "versioned",
+      "regulatory_state_updated": true,
+      "revalidation_triggered": true
     }
   ]
 }
