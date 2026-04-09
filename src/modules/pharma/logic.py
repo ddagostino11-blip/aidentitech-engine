@@ -4,35 +4,40 @@ from src.modules.pharma.policy import apply_policy
 
 
 def _normalize_pharma_rules(module_config: dict) -> list:
-    rules = module_config.get("rules", {})
-
+    rules_config = module_config.get("rules", {})
     normalized_rules = []
 
-    for field in rules.get("required_fields", []):
-        normalized_rules.append({
-            "rule_id": f"required_{field}",
-            "rule_type": "required_field",
-            "field": field,
-            "expected": "required",
-            "severity": "HIGH",
-            "recommended_action": "HOLD_BATCH"
-        })
+    # 🔁 Loop su tutti i framework (GMP, ICH, ecc.)
+    for framework_name, framework_rules in rules_config.items():
 
-    for rule in rules.get("checks", []):
-        normalized_rules.append({
-            "rule_id": rule.get("rule_id"),
-            "rule_type": rule.get("type"),
-            "field": rule.get("field"),
-            "expected": rule.get("threshold", rule.get("expected")),
-            "severity": rule.get("severity", "LOW"),
-            "recommended_action": rule.get("recommended_action", "RELEASE_BATCH"),
-            "status": rule.get("status", "APPROVED"),
-            "risk_score": rule.get("risk_score", 0),
-            "issue_code": rule.get("issue_code", rule.get("rule_id"))
-        })
+        # REQUIRED FIELDS
+        for field in framework_rules.get("required_fields", []):
+            normalized_rules.append({
+                "rule_id": f"{framework_name.lower()}_required_{field}",
+                "rule_type": "required_field",
+                "field": field,
+                "expected": "required",
+                "severity": "HIGH",
+                "recommended_action": "HOLD_BATCH",
+                "framework": framework_name
+            })
+
+        # CHECKS
+        for rule in framework_rules.get("checks", []):
+            normalized_rules.append({
+                "rule_id": rule.get("rule_id"),
+                "rule_type": rule.get("type"),
+                "field": rule.get("field"),
+                "expected": rule.get("threshold", rule.get("expected")),
+                "severity": rule.get("severity", "LOW"),
+                "recommended_action": rule.get("recommended_action", "RELEASE_BATCH"),
+                "status": rule.get("status", "APPROVED"),
+                "risk_score": rule.get("risk_score", 0),
+                "issue_code": rule.get("issue_code", rule.get("rule_id")),
+                "framework": framework_name
+            })
 
     return normalized_rules
-
 
 def _severity_rank(severity: str) -> int:
     ranking = {
