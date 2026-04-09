@@ -11,9 +11,10 @@ app = FastAPI(title="Aidentitech Engine API")
 
 
 class ValidateRequest(BaseModel):
+    client_id: str
+    product_id: str
     module: str
-    payload: dict | None = None
-    client_id: str | None = "anonymous"
+    payload: dict
 
     @model_validator(mode="after")
     def validate_payload_for_module(self):
@@ -99,6 +100,7 @@ def validate(request: ValidateRequest):
 
         ledger_entry = append_ledger_entry({
             "client_id": request.client_id,
+            "product_id": request.product_id,
             "module": request.module,
             "decision": decision.get("status"),
         })
@@ -106,7 +108,13 @@ def validate(request: ValidateRequest):
         return {
             "engine": "aidentitech",
             "module": request.module,
+
             "client_id": request.client_id,
+            "product_id": request.product_id,
+            "decision_trace_id": ledger_entry.get("hash"),
+
+            "output_type": decision.get("output_type"),
+            "execution_allowed": decision.get("execution_allowed"),
 
             "status": decision.get("status"),
             "severity": decision.get("severity"),

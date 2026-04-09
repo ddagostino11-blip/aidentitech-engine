@@ -2,6 +2,7 @@ from src.core.rule_engine import evaluate_rules
 from src.core.explainer import build_explanation
 from src.modules.pharma.policy import apply_policy
 
+
 def _normalize_pharma_rules(module_config: dict) -> list:
     rules = module_config.get("rules", {})
 
@@ -135,6 +136,22 @@ def run(module_config: dict, payload: dict):
         result["review_required"] = False
         result["regulatory_impact"] = "LOW"
         result["batch_disposition"] = "RELEASED"
+
+    # 👉 AGGIUNTA FONDAMENTALE (STATUS + OUTPUT)
+    if result["severity"] == "HIGH":
+        result["status"] = "REJECTED"
+        result["output_type"] = "NOT_APPROVED"
+        result["execution_allowed"] = False
+
+    elif result["severity"] == "MEDIUM":
+        result["status"] = "REVIEW"
+        result["output_type"] = "RISK_DOSSIER"
+        result["execution_allowed"] = False
+
+    else:
+        result["status"] = "APPROVED"
+        result["output_type"] = "AUDIT_READY"
+        result["execution_allowed"] = True
 
     # EXPLANATION
     result["explanation"] = build_explanation(result)
