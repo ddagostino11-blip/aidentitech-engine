@@ -1,11 +1,15 @@
 {
+  "rules_version": "pharma-v1.0.0",
   "rules": {
     "GMP": {
       "required_fields": [
         "product_id",
         "batch",
         "gmp_compliant",
-        "temperature"
+        "temperature",
+        "batch_record_reviewed",
+        "deviation_open",
+        "capa_open"
       ],
       "checks": [
         {
@@ -18,6 +22,39 @@
           "risk_score": 60,
           "issue_code": "gmp_non_compliant",
           "recommended_action": "HOLD_BATCH"
+        },
+        {
+          "rule_id": "batch_record_not_reviewed",
+          "type": "boolean_equals",
+          "field": "batch_record_reviewed",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 50,
+          "issue_code": "batch_record_not_reviewed",
+          "recommended_action": "HOLD_BATCH"
+        },
+        {
+          "rule_id": "deviation_open",
+          "type": "boolean_equals",
+          "field": "deviation_open",
+          "expected": true,
+          "status": "WARNING",
+          "severity": "MEDIUM",
+          "risk_score": 25,
+          "issue_code": "open_deviation_present",
+          "recommended_action": "QUALITY_REVIEW"
+        },
+        {
+          "rule_id": "capa_open",
+          "type": "boolean_equals",
+          "field": "capa_open",
+          "expected": true,
+          "status": "WARNING",
+          "severity": "MEDIUM",
+          "risk_score": 20,
+          "issue_code": "open_capa_present",
+          "recommended_action": "QUALITY_REVIEW"
         },
         {
           "rule_id": "temperature_warning_low",
@@ -66,9 +103,172 @@
       ]
     },
 
-    "ICH": {
-      "required_fields": [],
-      "checks": []
+    "ICH_Q9": {
+      "required_fields": [
+        "quality_risk_reviewed",
+        "change_control_approved",
+        "stability_data_available"
+      ],
+      "checks": [
+        {
+          "rule_id": "quality_risk_not_reviewed",
+          "type": "boolean_equals",
+          "field": "quality_risk_reviewed",
+          "expected": false,
+          "status": "WARNING",
+          "severity": "MEDIUM",
+          "risk_score": 25,
+          "issue_code": "quality_risk_not_reviewed",
+          "recommended_action": "QUALITY_REVIEW"
+        },
+        {
+          "rule_id": "change_control_not_approved",
+          "type": "boolean_equals",
+          "field": "change_control_approved",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 55,
+          "issue_code": "change_control_not_approved",
+          "recommended_action": "HOLD_BATCH"
+        },
+        {
+          "rule_id": "stability_data_missing",
+          "type": "boolean_equals",
+          "field": "stability_data_available",
+          "expected": false,
+          "status": "WARNING",
+          "severity": "MEDIUM",
+          "risk_score": 20,
+          "issue_code": "stability_data_missing",
+          "recommended_action": "QUALITY_REVIEW"
+        }
+      ]
+    },
+
+    "GCP": {
+      "required_fields": [
+        "clinical_data_traceable",
+        "informed_consent_complete"
+      ],
+      "checks": [
+        {
+          "rule_id": "clinical_data_not_traceable",
+          "type": "boolean_equals",
+          "field": "clinical_data_traceable",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 65,
+          "issue_code": "clinical_data_not_traceable",
+          "recommended_action": "BLOCK_AND_ESCALATE"
+        },
+        {
+          "rule_id": "informed_consent_incomplete",
+          "type": "boolean_equals",
+          "field": "informed_consent_complete",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 70,
+          "issue_code": "informed_consent_incomplete",
+          "recommended_action": "BLOCK_AND_ESCALATE"
+        }
+      ]
+    },
+
+    "ALCOA_PLUS": {
+      "required_fields": [
+        "audit_trail_enabled",
+        "data_attributable",
+        "data_legible",
+        "data_contemporaneous",
+        "data_original",
+        "data_accurate",
+        "data_complete",
+        "data_consistent",
+        "data_enduring",
+        "data_available"
+      ],
+      "checks": [
+        {
+          "rule_id": "audit_trail_disabled",
+          "type": "boolean_equals",
+          "field": "audit_trail_enabled",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 60,
+          "issue_code": "audit_trail_disabled",
+          "recommended_action": "BLOCK_AND_ESCALATE"
+        },
+        {
+          "rule_id": "data_not_attributable",
+          "type": "boolean_equals",
+          "field": "data_attributable",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 55,
+          "issue_code": "data_not_attributable",
+          "recommended_action": "BLOCK_AND_ESCALATE"
+        },
+        {
+          "rule_id": "data_not_contemporaneous",
+          "type": "boolean_equals",
+          "field": "data_contemporaneous",
+          "expected": false,
+          "status": "WARNING",
+          "severity": "MEDIUM",
+          "risk_score": 25,
+          "issue_code": "data_not_contemporaneous",
+          "recommended_action": "QUALITY_REVIEW"
+        },
+        {
+          "rule_id": "data_not_original",
+          "type": "boolean_equals",
+          "field": "data_original",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 55,
+          "issue_code": "data_not_original",
+          "recommended_action": "BLOCK_AND_ESCALATE"
+        },
+        {
+          "rule_id": "data_not_accurate",
+          "type": "boolean_equals",
+          "field": "data_accurate",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 60,
+          "issue_code": "data_not_accurate",
+          "recommended_action": "BLOCK_AND_ESCALATE"
+        },
+        {
+          "rule_id": "data_not_complete",
+          "type": "boolean_equals",
+          "field": "data_complete",
+          "expected": false,
+          "status": "WARNING",
+          "severity": "MEDIUM",
+          "risk_score": 20,
+          "issue_code": "data_not_complete",
+          "recommended_action": "QUALITY_REVIEW"
+        },
+        {
+          "rule_id": "data_not_available",
+          "type": "boolean_equals",
+          "field": "data_available",
+          "expected": false,
+          "status": "REJECTED",
+          "severity": "HIGH",
+          "risk_score": 50,
+          "issue_code": "data_not_available",
+          "recommended_action": "BLOCK_AND_ESCALATE"
+        }
+      ]
     }
   },
 

@@ -4,7 +4,13 @@ from src.modules.pharma.policy import apply_policy
 
 
 def _normalize_pharma_rules(module_config: dict) -> list:
-    rules_config = module_config.get("rules", {})
+
+    # FIX: se arriva come stringa (errore loader), converti in dict
+    if isinstance(module_config, str):
+        import json
+        module_config = json.loads(module_config)
+
+    rules_config = module_config.get("rules", {}).get("rules", {})
     selected_frameworks = module_config.get("selected_frameworks", []) or []
 
     normalized_rules = []
@@ -81,6 +87,10 @@ def _action_rank(action: str) -> int:
 
 
 def run(module_config: dict, payload: dict):
+    if isinstance(module_config, str):
+        import json
+        module_config = json.loads(module_config)
+
     normalized_rules = _normalize_pharma_rules(module_config)
     compliance_scope = module_config.get("compliance_scope", {})
     engine_result = evaluate_rules(payload, normalized_rules)
