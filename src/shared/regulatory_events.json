@@ -115,7 +115,7 @@
       "change_type": "rule_updated",
       "impact_level": "HIGH",
       "priority": "HIGH",
-      "status": "pending_legal_review",
+      "status": "legal_approved",
       "freeze_active": true,
       "freeze_reason": "auto_regulatory_high_impact",
       "created_at": "2026-04-09T17:24:31.629756",
@@ -126,7 +126,18 @@
           "priority": "HIGH"
         }
       ],
-      "impacts_detected": 1
+      "impacts_detected": 1,
+      "legal_review": {
+        "decision": "approve",
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reviewed_at": "2026-04-09T20:58:35.859770"
+      },
+      "approved_at": "2026-04-09T20:58:35.859770",
+      "versioning_status": "versioned",
+      "regulatory_state_updated": true,
+      "revalidation_triggered": true,
+      "processed_at": "2026-04-09T20:58:35.863584"
     },
     {
       "event_id": "event-e9c1939a-93cb-40eb-8812-36644a70076a",
