@@ -1,3 +1,25 @@
+import json
+from pathlib import Path
+
+
+def _load_impact_registry():
+    try:
+        path = Path("src/shared/impact_registry.json")
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _load_regulatory_state():
+    try:
+        path = Path("src/shared/regulatory_state.json")
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
 def apply_policy(decision: dict, module_config: dict, payload: dict | None = None) -> dict:
     if not isinstance(decision, dict):
         return decision or {}
@@ -8,24 +30,62 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
     if payload is not None and not isinstance(payload, dict):
         payload = {}
 
-    policy = module_config.get("policy", {})
-    profile = policy.get("profile", "default")
-
     result = dict(decision)
 
-    issues = result.get("issues", []) or []
-    max_severity = result.get("severity", "LOW")
+    # =========================
+    # LOAD EXTERNAL REGISTRIES
+    # =========================
+    impact_registry = _load_impact_registry()
+    regulatory_state = _load_regulatory_state()
 
-    payload_regulatory_context = {}
-    if isinstance(payload, dict):
-        payload_regulatory_context = payload.get("regulatory_context") or {}
+    module_name = module_config.get("module_name", "pharma")
 
+    module_state = regulatory_state.get(module_name, {})
+    module_impacts = impact_registry.get(module_name, {})
+
+    # =========================
+    # REGULATORY CONTEXT
+    # =========================
+    payload_regulatory_context = payload.get("regulatory_context") or {}
     module_regulatory_context = module_config.get("regulatory_context") or {}
-
     regulatory_context = payload_regulatory_context or module_regulatory_context or {}
 
     region = regulatory_context.get("region", "UNKNOWN")
     authority = regulatory_context.get("authority", "UNKNOWN")
+
+    # =========================
+    # 🚨 REGULATORY FREEZE CHECK
+    # =========================
+    if module_state.get("freeze_active") is True:
+        freeze_impact = module_impacts.get("REGULATORY_FREEZE", {})
+
+        result.update({
+            "status": "FROZEN",
+            "severity": freeze_impact.get("severity", "CRITICAL"),
+            "decision_code": "REGULATORY_FREEZE",
+            "recommended_action": freeze_impact.get("recommended_action", "ESCALATE"),
+            "regulatory_impact": "CRITICAL",
+            "batch_disposition": "BLOCKED",
+            "execution_allowed": freeze_impact.get("execution_allowed", False),
+            "output_type": "REGULATORY_BLOCK",
+            "review_required": True
+        })
+
+        result["policy_profile"] = "regulatory_override"
+        result["regulatory_context"] = regulatory_context
+        result["region"] = region
+        result["authority"] = authority
+
+        return result
+
+    # =========================
+    # STANDARD POLICY LOGIC
+    # =========================
+    policy = module_config.get("policy", {})
+    profile = policy.get("profile", "default")
+
+    issues = result.get("issues", []) or []
+    max_severity = result.get("severity", "LOW")
 
     if not issues:
         result["policy_profile"] = profile
@@ -73,6 +133,9 @@ def apply_policy(decision: dict, module_config: dict, payload: dict | None = Non
             result["regulatory_impact"] = "LOW"
             result["batch_disposition"] = "RELEASED"
 
+    # =========================
+    # FINAL METADATA
+    # =========================
     result["policy_profile"] = profile
     result["regulatory_context"] = regulatory_context
     result["region"] = region

@@ -1,0 +1,32 @@
+{
+  "pharma": {
+    "REGULATORY_FREEZE": {
+      "severity": "CRITICAL",
+      "impact": "BLOCKING",
+      "description": "Regulatory freeze active - dossier emission blocked",
+      "recommended_action": "ESCALATE_IMMEDIATELY",
+      "execution_allowed": false
+    },
+    "DATA_INTEGRITY_FAILURE": {
+      "severity": "HIGH",
+      "impact": "BLOCKING",
+      "description": "Data integrity violation detected (ALCOA+ breach)",
+      "recommended_action": "HOLD_BATCH",
+      "execution_allowed": false
+    },
+    "GMP_NON_COMPLIANCE": {
+      "severity": "HIGH",
+      "impact": "BLOCKING",
+      "description": "GMP compliance requirements not satisfied",
+      "recommended_action": "HOLD_BATCH",
+      "execution_allowed": false
+    },
+    "QUALITY_REVIEW_REQUIRED": {
+      "severity": "MEDIUM",
+      "impact": "REVIEW",
+      "description": "Quality review required before release",
+      "recommended_action": "QUALITY_REVIEW",
+      "execution_allowed": false
+    }
+  }
+}
