@@ -1,6 +1,7 @@
 from src.core.rule_engine import evaluate_rules
 from src.core.explainer import build_explanation
 from src.modules.pharma.policy import apply_policy
+from src.shared.regulatory_state import load_regulatory_state
 
 
 def _normalize_pharma_rules(module_config: dict) -> list:
@@ -87,6 +88,27 @@ def run(module_config: dict, payload: dict):
         import json
         module_config = json.loads(module_config)
 
+    # 🔥 REGULATORY FREEZE CHECK (NUOVO)
+    regulatory_state = load_regulatory_state().get("pharma", {})
+
+    if regulatory_state.get("freeze_active") is True:
+        return {
+            "status": "FROZEN",
+            "output_type": "REGULATORY_BLOCK",
+            "execution_allowed": False,
+            "decision_code": "REGULATORY_FREEZE",
+            "severity": "CRITICAL",
+            "recommended_action": "BLOCK_AND_ESCALATE",
+            "review_required": True,
+            "regulatory_impact": "CRITICAL",
+            "batch_disposition": "BLOCKED",
+            "freeze_reason": regulatory_state.get("freeze_reason"),
+            "triggered_by": regulatory_state.get("triggered_by"),
+            "ruleset_id": regulatory_state.get("ruleset_id"),
+            "effective_date": regulatory_state.get("effective_date"),
+            "compliance_scope": module_config.get("compliance_scope", {})
+        }
+
     normalized_rules = _normalize_pharma_rules(module_config)
     compliance_scope = module_config.get("compliance_scope", {})
     engine_result = evaluate_rules(payload, normalized_rules)
@@ -103,7 +125,7 @@ def run(module_config: dict, payload: dict):
         "regulatory_impact": "LOW",
         "batch_disposition": "RELEASED",
         "compliance_scope": compliance_scope,
-        "ruleset_id": module_config.get("ruleset_id")  # 👈 AGGIUNTO QUI
+        "ruleset_id": module_config.get("ruleset_id")
     }
 
     # BUILD ISSUES + RISK

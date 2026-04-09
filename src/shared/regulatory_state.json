@@ -3,12 +3,24 @@
     "region": "EU",
     "authority": "EMA",
     "country": "IT",
+
     "ruleset_id": "pharma-eu-gmp-v1",
+    "ruleset_version": "1.0",
+
     "effective_date": "2026-04-09",
+    "last_updated": "2026-04-09",
+
     "status": "ACTIVE",
+
     "freeze_active": false,
     "freeze_reason": null,
     "freeze_timestamp": null,
-    "triggered_by": null
+    "triggered_by": null,
+
+    "sentinel": {
+      "monitoring": true,
+      "priority": "HIGH",
+      "last_check": null
+    }
   }
 }
