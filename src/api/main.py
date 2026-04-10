@@ -13,7 +13,8 @@ from src.sentinel.legal_decision_handler import (
     handle_legal_decision,
     handle_legal_reopen,
 )
-from src.services.event_store import filter_events
+from src.services.event_store import load_event_store
+from src.services.event_query import filter_events
 
 app = FastAPI(title="Aidentitech Engine API")
 
@@ -131,13 +132,27 @@ def validate(request: ValidateRequest):
 
 
 @app.get("/legal/events")
-def get_legal_events(status: Optional[str] = None, domain: Optional[str] = None):
+def get_legal_events(
+    status: Optional[str] = None,
+    domain: Optional[str] = None,
+    client_id: Optional[str] = None,
+    product_id: Optional[str] = None,
+):
     try:
-        events = filter_events(status=status, domain=domain)
+        store = load_event_store()
+        events = store.get("events", [])
+
+        filtered = filter_events(
+            events=events,
+            status=status,
+            domain=domain,
+            client_id=client_id,
+            product_id=product_id,
+        )
 
         return {
-            "count": len(events),
-            "events": events
+            "count": len(filtered),
+            "events": filtered
         }
 
     except Exception as e:
