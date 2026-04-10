@@ -213,9 +213,9 @@
       "change_type": "validation_review_required",
       "impact_level": "HIGH",
       "priority": "HIGH",
-      "status": "pending_legal_review",
-      "freeze_active": true,
-      "freeze_reason": "auto_regulatory_high_impact",
+      "status": "legal_approved",
+      "freeze_active": false,
+      "freeze_reason": null,
       "created_at": "2026-04-10T11:27:01.245159",
       "legal_tasks": [
         {
@@ -233,7 +233,20 @@
         "severity": "HIGH",
         "recommended_action": "HOLD_BATCH",
         "review_required": true
-      }
+      },
+      "legal_review": {
+        "decision": "approve",
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reviewed_at": "2026-04-10T13:58:30.076950"
+      },
+      "approved_at": "2026-04-10T13:58:30.076950",
+      "versioning_status": "versioned",
+      "freeze_timestamp": null,
+      "freeze_released_at": "2026-04-10T13:58:30.079287",
+      "regulatory_state_updated": true,
+      "revalidation_triggered": true,
+      "processed_at": "2026-04-10T13:58:30.079295"
     },
     {
       "event_id": "event-938fd757-8fe9-4e1d-94fb-37f919b4742e",
@@ -244,7 +257,7 @@
       "change_type": "validation_review_required",
       "impact_level": "HIGH",
       "priority": "HIGH",
-      "status": "pending_legal_review",
+      "status": "legal_rejected",
       "freeze_active": true,
       "freeze_reason": "auto_regulatory_high_impact",
       "created_at": "2026-04-10T13:38:37.152724",
@@ -264,7 +277,52 @@
         "severity": "HIGH",
         "recommended_action": "HOLD_BATCH",
         "review_required": true
-      }
+      },
+      "legal_review": {
+        "decision": "reject",
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reviewed_at": "2026-04-10T14:02:34.479421"
+      },
+      "rejected_at": "2026-04-10T14:02:34.479421"
+    },
+    {
+      "event_id": "event-4816661c-b91e-455f-8ff3-72d60e1f5fb3",
+      "delta_id": "70066690-ce97-4456-add9-7e1dce349347",
+      "domain": "pharma",
+      "jurisdiction": "EU",
+      "rule_id": "PHARMA_REJECTED",
+      "change_type": "validation_review_required",
+      "impact_level": "HIGH",
+      "priority": "HIGH",
+      "status": "legal_deferred",
+      "freeze_active": true,
+      "freeze_reason": "auto_regulatory_high_impact",
+      "created_at": "2026-04-10T14:06:15.253727",
+      "legal_tasks": [
+        {
+          "review_id": "test-client-PROD-DEFER-001-pharma",
+          "status": "pending_review",
+          "priority": "HIGH"
+        }
+      ],
+      "impacts_detected": 18,
+      "client_id": "test-client",
+      "product_id": "PROD-DEFER-001",
+      "source": "validation_pipeline",
+      "decision_snapshot": {
+        "status": "REJECTED",
+        "severity": "HIGH",
+        "recommended_action": "HOLD_BATCH",
+        "review_required": true
+      },
+      "legal_review": {
+        "decision": "defer",
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reviewed_at": "2026-04-10T14:08:14.855016"
+      },
+      "deferred_at": "2026-04-10T14:08:14.855016"
     }
   ]
 }

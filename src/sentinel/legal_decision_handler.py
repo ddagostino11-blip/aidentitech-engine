@@ -33,6 +33,9 @@ def handle_legal_decision(
     decision = decision.lower().strip()
     now = datetime.utcnow().isoformat()
 
+    if decision not in {"approve", "reject", "defer"}:
+        return {"error": "invalid_decision"}
+
     event["legal_review"] = {
         "decision": decision,
         "reviewer_name": reviewer_name,
@@ -60,9 +63,10 @@ def handle_legal_decision(
         event["status"] = "legal_rejected"
         event["rejected_at"] = now
 
-        if event.get("freeze_active") is True:
-            event["freeze_active"] = False
-            event["freeze_released_at"] = now
+        # reject = freeze mantenuto
+        event["freeze_active"] = True
+        if not event.get("freeze_reason"):
+            event["freeze_reason"] = "legal_rejected"
 
         print(f"[Sentinel] Event {event_id} REJECTED by {reviewer_name}")
         save_event_store(store)
@@ -71,16 +75,20 @@ def handle_legal_decision(
         event["status"] = "legal_deferred"
         event["deferred_at"] = now
 
+        # defer = freeze mantenuto
+        event["freeze_active"] = True
+        if not event.get("freeze_reason"):
+            event["freeze_reason"] = "legal_deferred"
+
         print(f"[Sentinel] Event {event_id} DEFERRED by {reviewer_name}")
         save_event_store(store)
-
-    else:
-        return {"error": "invalid_decision"}
 
     response = {
         "event_id": event_id,
         "status": event["status"],
-        "legal_review": event.get("legal_review")
+        "legal_review": event.get("legal_review"),
+        "freeze_active": event.get("freeze_active"),
+        "freeze_reason": event.get("freeze_reason"),
     }
 
     if executor_result is not None:
@@ -91,5 +99,8 @@ def handle_legal_decision(
 
     if event.get("processed_at") is not None:
         response["processed_at"] = event.get("processed_at")
+
+    if event.get("freeze_released_at") is not None:
+        response["freeze_released_at"] = event.get("freeze_released_at")
 
     return response
