@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-EVENTS_FILE = "src/shared/regulatory_events.json"
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+EVENTS_FILE = os.path.join(BASE_DIR, "shared", "regulatory_events.json")
 
 
 def load_event_store() -> Dict[str, Any]:
@@ -51,21 +52,6 @@ def find_open_event(
             return event
 
     return None
-
-
-def filter_events(
-    status: Optional[str] = None,
-    domain: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    events = get_events()
-
-    if status:
-        events = [event for event in events if event.get("status") == status]
-
-    if domain:
-        events = [event for event in events if event.get("domain") == domain]
-
-    return events
 
 
 def append_event(event: Dict[str, Any]) -> None:

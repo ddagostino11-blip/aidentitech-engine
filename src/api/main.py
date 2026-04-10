@@ -137,6 +137,10 @@ def get_legal_events(
     domain: Optional[str] = None,
     client_id: Optional[str] = None,
     product_id: Optional[str] = None,
+    limit: Optional[int] = 50,
+    offset: Optional[int] = 0,
+    sort_by: Optional[str] = "created_at",
+    order: Optional[str] = "desc",
 ):
     try:
         store = load_event_store()
@@ -148,6 +152,10 @@ def get_legal_events(
             domain=domain,
             client_id=client_id,
             product_id=product_id,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            order=order,
         )
 
         return {
