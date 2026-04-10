@@ -425,6 +425,82 @@
         "recommended_action": "HOLD_BATCH",
         "review_required": true
       }
+    },
+    {
+      "event_id": "event-7044c794-e18a-4a24-b699-f6a2ce7a666d",
+      "delta_id": "bcffd7a3-238a-48f8-9459-12214180bd13",
+      "domain": "pharma",
+      "jurisdiction": "EU",
+      "rule_id": "PHARMA_REJECTED",
+      "change_type": "validation_review_required",
+      "impact_level": "HIGH",
+      "priority": "HIGH",
+      "status": "legal_approved",
+      "freeze_active": false,
+      "freeze_reason": null,
+      "created_at": "2026-04-10T15:12:15.310887",
+      "legal_tasks": [
+        {
+          "review_id": "test-client-PROD-AUDIT-STEP2-001-pharma",
+          "status": "completed",
+          "priority": "HIGH"
+        }
+      ],
+      "impacts_detected": 18,
+      "audit_trail": [
+        {
+          "action": "created",
+          "actor": "SYSTEM",
+          "timestamp": "2026-04-10T15:12:15.310887"
+        },
+        {
+          "action": "deferred",
+          "actor": "LEGAL_TEAM",
+          "timestamp": "2026-04-10T15:13:18.483949",
+          "notes": null
+        },
+        {
+          "action": "reopened",
+          "actor": "LEGAL_TEAM",
+          "timestamp": "2026-04-10T15:15:05.404189",
+          "notes": null
+        },
+        {
+          "action": "approved",
+          "actor": "LEGAL_TEAM",
+          "timestamp": "2026-04-10T15:16:56.750420",
+          "notes": null
+        }
+      ],
+      "client_id": "test-client",
+      "product_id": "PROD-AUDIT-STEP2-001",
+      "source": "validation_pipeline",
+      "decision_snapshot": {
+        "status": "REJECTED",
+        "severity": "HIGH",
+        "recommended_action": "HOLD_BATCH",
+        "review_required": true
+      },
+      "legal_review": {
+        "decision": "approve",
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reviewed_at": "2026-04-10T15:16:56.750420"
+      },
+      "deferred_at": "2026-04-10T15:13:18.483949",
+      "reopened_at": "2026-04-10T15:15:05.404189",
+      "legal_reopen": {
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reopened_at": "2026-04-10T15:15:05.404189"
+      },
+      "approved_at": "2026-04-10T15:16:56.750420",
+      "versioning_status": "versioned",
+      "freeze_timestamp": null,
+      "freeze_released_at": "2026-04-10T15:16:56.752401",
+      "regulatory_state_updated": true,
+      "revalidation_triggered": true,
+      "processed_at": "2026-04-10T15:16:56.752405"
     }
   ]
 }

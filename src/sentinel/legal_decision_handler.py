@@ -20,6 +20,23 @@ def _set_legal_tasks_status(event: Dict[str, Any], status: str) -> None:
         task["status"] = status
 
 
+def _append_audit_entry(
+    event: Dict[str, Any],
+    action: str,
+    actor: str,
+    timestamp: str,
+    notes: str | None = None
+) -> None:
+    event.setdefault("audit_trail", []).append(
+        {
+            "action": action,
+            "actor": actor,
+            "timestamp": timestamp,
+            "notes": notes
+        }
+    )
+
+
 def handle_legal_decision(
     event_id: str,
     decision: str,   # approve | reject | defer
@@ -55,6 +72,13 @@ def handle_legal_decision(
         event["approved_at"] = now
         event["versioning_status"] = "pending_versioning"
         _set_legal_tasks_status(event, "completed")
+        _append_audit_entry(
+            event=event,
+            action="approved",
+            actor=reviewer_name,
+            timestamp=now,
+            notes=notes
+        )
 
         print(f"[Sentinel] Event {event_id} APPROVED by {reviewer_name}")
 
@@ -74,6 +98,14 @@ def handle_legal_decision(
         if not event.get("freeze_reason"):
             event["freeze_reason"] = "legal_rejected"
 
+        _append_audit_entry(
+            event=event,
+            action="rejected",
+            actor=reviewer_name,
+            timestamp=now,
+            notes=notes
+        )
+
         print(f"[Sentinel] Event {event_id} REJECTED by {reviewer_name}")
         save_event_store(store)
 
@@ -86,6 +118,14 @@ def handle_legal_decision(
         if not event.get("freeze_reason"):
             event["freeze_reason"] = "legal_deferred"
 
+        _append_audit_entry(
+            event=event,
+            action="deferred",
+            actor=reviewer_name,
+            timestamp=now,
+            notes=notes
+        )
+
         print(f"[Sentinel] Event {event_id} DEFERRED by {reviewer_name}")
         save_event_store(store)
 
@@ -96,6 +136,7 @@ def handle_legal_decision(
         "freeze_active": event.get("freeze_active"),
         "freeze_reason": event.get("freeze_reason"),
         "legal_tasks": event.get("legal_tasks", []),
+        "audit_trail": event.get("audit_trail", []),
     }
 
     if executor_result is not None:
@@ -140,14 +181,23 @@ def handle_legal_reopen(
         "reopened_at": now
     }
 
+    _append_audit_entry(
+        event=event,
+        action="reopened",
+        actor=reviewer_name,
+        timestamp=now,
+        notes=notes
+    )
+
     print(f"[Sentinel] Event {event_id} REOPENED by {reviewer_name}")
     save_event_store(store)
 
     return {
         "event_id": event_id,
-        "status": event["status"],
+        "status": event.get("status"),
         "freeze_active": event.get("freeze_active"),
         "freeze_reason": event.get("freeze_reason"),
         "legal_tasks": event.get("legal_tasks", []),
         "legal_reopen": event.get("legal_reopen"),
+        "audit_trail": event.get("audit_trail", []),
     }
