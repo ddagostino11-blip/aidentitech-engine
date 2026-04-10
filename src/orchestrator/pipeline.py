@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 from fastapi import HTTPException
 
 from src.modules.registry import AVAILABLE_MODULES
-from src.services.event_store import create_regulatory_event
+from src.services.event_store import create_regulatory_event, find_open_event
 
 
 def run_validation_pipeline(
@@ -44,42 +44,51 @@ def run_validation_pipeline(
     legal_required = decision.get("review_required", False)
     decision["legal_flag"] = bool(legal_required)
 
-    # 6) Se serve legal review, crea evento
+    # 6) Se serve legal review, crea o riusa evento
     created_event = None
+    reused_event = None
 
     if legal_required:
-        severity = decision.get("severity", "MEDIUM")
-        regulatory_impact = decision.get("regulatory_impact", "MEDIUM")
-        decision_code = decision.get("decision_code", "validation_review_required")
-
-        created_event = create_regulatory_event(
+        reused_event = find_open_event(
+            client_id=client_id,
+            product_id=product_id,
             domain=module,
-            rule_id=decision_code,
-            change_type="validation_review_required",
-            impact_level=regulatory_impact,
-            priority=severity,
-            impacts_detected=len(decision.get("issues", [])),
-            freeze_active=True,
-            freeze_reason="auto_regulatory_high_impact",
-            legal_tasks=[
-                {
-                    "review_id": f"{client_id}-{product_id}-{module}",
-                    "status": "pending_review",
-                    "priority": severity,
-                }
-            ],
-            extra_fields={
-                "client_id": client_id,
-                "product_id": product_id,
-                "source": "validation_pipeline",
-                "decision_snapshot": {
-                    "status": decision.get("status"),
-                    "severity": decision.get("severity"),
-                    "recommended_action": decision.get("recommended_action"),
-                    "review_required": legal_required,
-                },
-            },
+            status="pending_legal_review",
         )
+
+        if reused_event is None:
+            severity = decision.get("severity", "MEDIUM")
+            regulatory_impact = decision.get("regulatory_impact", "MEDIUM")
+            decision_code = decision.get("decision_code", "validation_review_required")
+
+            created_event = create_regulatory_event(
+                domain=module,
+                rule_id=decision_code,
+                change_type="validation_review_required",
+                impact_level=regulatory_impact,
+                priority=severity,
+                impacts_detected=len(decision.get("issues", [])),
+                freeze_active=True,
+                freeze_reason="auto_regulatory_high_impact",
+                legal_tasks=[
+                    {
+                        "review_id": f"{client_id}-{product_id}-{module}",
+                        "status": "pending_review",
+                        "priority": severity,
+                    }
+                ],
+                extra_fields={
+                    "client_id": client_id,
+                    "product_id": product_id,
+                    "source": "validation_pipeline",
+                    "decision_snapshot": {
+                        "status": decision.get("status"),
+                        "severity": decision.get("severity"),
+                        "recommended_action": decision.get("recommended_action"),
+                        "review_required": legal_required,
+                    },
+                },
+            )
 
     # 7) Ledger
     ledger_entry = append_ledger_entry_fn({
@@ -89,7 +98,10 @@ def run_validation_pipeline(
         "decision": decision.get("status"),
     })
 
-    # 8) Output
+    # 8) Evento finale usato in output
+    legal_event = created_event or reused_event
+
+    # 9) Output
     return {
         "engine": "aidentitech",
         "module": module,
@@ -123,7 +135,8 @@ def run_validation_pipeline(
         "compliance_scope": decision.get("compliance_scope", {}),
 
         "legal_event_created": created_event is not None,
-        "legal_event_id": created_event.get("event_id") if created_event else None,
+        "legal_event_reused": reused_event is not None,
+        "legal_event_id": legal_event.get("event_id") if legal_event else None,
 
         "ledger_hash": ledger_entry.get("hash"),
     }

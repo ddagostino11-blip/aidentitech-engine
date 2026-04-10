@@ -234,6 +234,37 @@
         "recommended_action": "HOLD_BATCH",
         "review_required": true
       }
+    },
+    {
+      "event_id": "event-938fd757-8fe9-4e1d-94fb-37f919b4742e",
+      "delta_id": "45ee66c7-d710-43bd-a41f-029c4045e1ad",
+      "domain": "pharma",
+      "jurisdiction": "EU",
+      "rule_id": "PHARMA_REJECTED",
+      "change_type": "validation_review_required",
+      "impact_level": "HIGH",
+      "priority": "HIGH",
+      "status": "pending_legal_review",
+      "freeze_active": true,
+      "freeze_reason": "auto_regulatory_high_impact",
+      "created_at": "2026-04-10T13:38:37.152724",
+      "legal_tasks": [
+        {
+          "review_id": "test-client-PROD-IDEMP-001-pharma",
+          "status": "pending_review",
+          "priority": "HIGH"
+        }
+      ],
+      "impacts_detected": 18,
+      "client_id": "test-client",
+      "product_id": "PROD-IDEMP-001",
+      "source": "validation_pipeline",
+      "decision_snapshot": {
+        "status": "REJECTED",
+        "severity": "HIGH",
+        "recommended_action": "HOLD_BATCH",
+        "review_required": true
+      }
     }
   ]
 }

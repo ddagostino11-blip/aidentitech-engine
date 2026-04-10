@@ -33,6 +33,26 @@ def find_event_by_id(event_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def find_open_event(
+    client_id: str,
+    product_id: str,
+    domain: str,
+    status: str = "pending_legal_review",
+) -> Optional[Dict[str, Any]]:
+    events = get_events()
+
+    for event in events:
+        if (
+            event.get("client_id") == client_id
+            and event.get("product_id") == product_id
+            and event.get("domain") == domain
+            and event.get("status") == status
+        ):
+            return event
+
+    return None
+
+
 def filter_events(
     status: Optional[str] = None,
     domain: Optional[str] = None
