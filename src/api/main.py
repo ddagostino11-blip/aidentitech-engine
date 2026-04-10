@@ -8,6 +8,7 @@ from core.config_loader import load_config
 from services.validation_service import execute_validation
 from core.ledger_chain import append_ledger_entry
 from src.modules.registry import AVAILABLE_MODULES
+from src.orchestrator.pipeline import run_validation_pipeline
 from src.sentinel.legal_decision_handler import handle_legal_decision
 from src.services.event_store import filter_events
 
@@ -98,53 +99,17 @@ def validate(request: ValidateRequest):
         )
 
     try:
-        config = load_config()
-        module_config = load_module_config(request.module)
-
-        frameworks = request.frameworks or []
-        module_config["selected_frameworks"] = frameworks
-
-        result = execute_validation(
-            config=config,
-            module_config=module_config,
-            module_name=request.module,
-            payload=request.payload
+        return run_validation_pipeline(
+            client_id=request.client_id,
+            product_id=request.product_id,
+            module=request.module,
+            payload=request.payload,
+            frameworks=request.frameworks or [],
+            load_config_fn=load_config,
+            load_module_config_fn=load_module_config,
+            execute_validation_fn=execute_validation,
+            append_ledger_entry_fn=append_ledger_entry,
         )
-
-        decision = result.get("decision", {})
-
-        ledger_entry = append_ledger_entry({
-            "client_id": request.client_id,
-            "product_id": request.product_id,
-            "module": request.module,
-            "decision": decision.get("status"),
-        })
-
-        return {
-            "engine": "aidentitech",
-            "module": request.module,
-            "client_id": request.client_id,
-            "product_id": request.product_id,
-            "decision_trace_id": ledger_entry.get("hash"),
-            "output_type": decision.get("output_type"),
-            "execution_allowed": decision.get("execution_allowed"),
-            "status": decision.get("status"),
-            "severity": decision.get("severity"),
-            "risk_score": decision.get("risk_score"),
-            "recommended_action": decision.get("recommended_action"),
-            "decision_code": decision.get("decision_code"),
-            "review_required": decision.get("review_required"),
-            "blocking_issues_count": decision.get("blocking_issues_count"),
-            "regulatory_impact": decision.get("regulatory_impact"),
-            "batch_disposition": decision.get("batch_disposition"),
-            "issues": decision.get("issues", []),
-            "audit": decision.get("audit", []),
-            "explanation": decision.get("explanation", {}),
-            "payload_received": result.get("payload_received", {}),
-            "versioning": result.get("versioning", module_config.get("versioning", {})),
-            "compliance_scope": decision.get("compliance_scope", {}),
-            "ledger_hash": ledger_entry.get("hash"),
-        }
 
     except HTTPException:
         raise
