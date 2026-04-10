@@ -1,5 +1,7 @@
 import json
 import os
+import uuid
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 EVENTS_FILE = "src/shared/regulatory_events.json"
@@ -63,3 +65,45 @@ def update_event(updated_event: Dict[str, Any]) -> bool:
             return True
 
     return False
+
+
+def generate_event_id() -> str:
+    return f"event-{uuid.uuid4()}"
+
+
+def create_regulatory_event(
+    domain: str,
+    rule_id: str,
+    change_type: str,
+    impact_level: str,
+    priority: str,
+    jurisdiction: str = "EU",
+    delta_id: Optional[str] = None,
+    impacts_detected: int = 0,
+    freeze_active: bool = False,
+    freeze_reason: Optional[str] = None,
+    legal_tasks: Optional[List[Dict[str, Any]]] = None,
+    extra_fields: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    event = {
+        "event_id": generate_event_id(),
+        "delta_id": delta_id or str(uuid.uuid4()),
+        "domain": domain,
+        "jurisdiction": jurisdiction,
+        "rule_id": rule_id,
+        "change_type": change_type,
+        "impact_level": impact_level,
+        "priority": priority,
+        "status": "pending_legal_review",
+        "freeze_active": freeze_active,
+        "freeze_reason": freeze_reason,
+        "created_at": datetime.utcnow().isoformat(),
+        "legal_tasks": legal_tasks or [],
+        "impacts_detected": impacts_detected,
+    }
+
+    if extra_fields:
+        event.update(extra_fields)
+
+    append_event(event)
+    return event
