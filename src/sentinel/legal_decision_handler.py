@@ -15,6 +15,11 @@ def _find_event(store: Dict[str, Any], event_id: str) -> Optional[Dict[str, Any]
     return None
 
 
+def _set_legal_tasks_status(event: Dict[str, Any], status: str) -> None:
+    for task in event.get("legal_tasks", []):
+        task["status"] = status
+
+
 def handle_legal_decision(
     event_id: str,
     decision: str,   # approve | reject | defer
@@ -49,6 +54,7 @@ def handle_legal_decision(
         event["status"] = "legal_approved"
         event["approved_at"] = now
         event["versioning_status"] = "pending_versioning"
+        _set_legal_tasks_status(event, "completed")
 
         print(f"[Sentinel] Event {event_id} APPROVED by {reviewer_name}")
 
@@ -62,8 +68,9 @@ def handle_legal_decision(
     elif decision == "reject":
         event["status"] = "legal_rejected"
         event["rejected_at"] = now
-
         event["freeze_active"] = True
+        _set_legal_tasks_status(event, "rejected")
+
         if not event.get("freeze_reason"):
             event["freeze_reason"] = "legal_rejected"
 
@@ -73,8 +80,9 @@ def handle_legal_decision(
     elif decision == "defer":
         event["status"] = "legal_deferred"
         event["deferred_at"] = now
-
         event["freeze_active"] = True
+        _set_legal_tasks_status(event, "deferred")
+
         if not event.get("freeze_reason"):
             event["freeze_reason"] = "legal_deferred"
 
@@ -87,6 +95,7 @@ def handle_legal_decision(
         "legal_review": event.get("legal_review"),
         "freeze_active": event.get("freeze_active"),
         "freeze_reason": event.get("freeze_reason"),
+        "legal_tasks": event.get("legal_tasks", []),
     }
 
     if executor_result is not None:
@@ -123,6 +132,7 @@ def handle_legal_reopen(
     event["status"] = "pending_legal_review"
     event["reopened_at"] = now
     event["freeze_active"] = True
+    _set_legal_tasks_status(event, "pending_review")
 
     event["legal_reopen"] = {
         "reviewer_name": reviewer_name,
@@ -138,5 +148,6 @@ def handle_legal_reopen(
         "status": event["status"],
         "freeze_active": event.get("freeze_active"),
         "freeze_reason": event.get("freeze_reason"),
+        "legal_tasks": event.get("legal_tasks", []),
         "legal_reopen": event.get("legal_reopen"),
     }

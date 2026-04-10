@@ -336,6 +336,57 @@
       "regulatory_state_updated": true,
       "revalidation_triggered": true,
       "processed_at": "2026-04-10T14:24:18.965678"
+    },
+    {
+      "event_id": "event-46fe07c0-fcb8-4fea-86af-77086ee66d03",
+      "delta_id": "7413d8d1-fe51-4432-86ff-765f0a6d17d2",
+      "domain": "pharma",
+      "jurisdiction": "EU",
+      "rule_id": "PHARMA_REJECTED",
+      "change_type": "validation_review_required",
+      "impact_level": "HIGH",
+      "priority": "HIGH",
+      "status": "legal_approved",
+      "freeze_active": false,
+      "freeze_reason": null,
+      "created_at": "2026-04-10T14:38:00.648679",
+      "legal_tasks": [
+        {
+          "review_id": "test-client-PROD-TASK-001-pharma",
+          "status": "completed",
+          "priority": "HIGH"
+        }
+      ],
+      "impacts_detected": 18,
+      "client_id": "test-client",
+      "product_id": "PROD-TASK-001",
+      "source": "validation_pipeline",
+      "decision_snapshot": {
+        "status": "REJECTED",
+        "severity": "HIGH",
+        "recommended_action": "HOLD_BATCH",
+        "review_required": true
+      },
+      "legal_review": {
+        "decision": "approve",
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reviewed_at": "2026-04-10T14:42:36.017474"
+      },
+      "deferred_at": "2026-04-10T14:40:20.481992",
+      "reopened_at": "2026-04-10T14:41:06.513351",
+      "legal_reopen": {
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reopened_at": "2026-04-10T14:41:06.513351"
+      },
+      "approved_at": "2026-04-10T14:42:36.017474",
+      "versioning_status": "versioned",
+      "freeze_timestamp": null,
+      "freeze_released_at": "2026-04-10T14:42:36.019917",
+      "regulatory_state_updated": true,
+      "revalidation_triggered": true,
+      "processed_at": "2026-04-10T14:42:36.019924"
     }
   ]
 }
