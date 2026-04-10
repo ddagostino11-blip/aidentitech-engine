@@ -295,9 +295,9 @@
       "change_type": "validation_review_required",
       "impact_level": "HIGH",
       "priority": "HIGH",
-      "status": "legal_deferred",
-      "freeze_active": true,
-      "freeze_reason": "auto_regulatory_high_impact",
+      "status": "legal_approved",
+      "freeze_active": false,
+      "freeze_reason": null,
       "created_at": "2026-04-10T14:06:15.253727",
       "legal_tasks": [
         {
@@ -317,12 +317,25 @@
         "review_required": true
       },
       "legal_review": {
-        "decision": "defer",
+        "decision": "approve",
         "reviewer_name": "LEGAL_TEAM",
         "notes": null,
-        "reviewed_at": "2026-04-10T14:08:14.855016"
+        "reviewed_at": "2026-04-10T14:24:18.963461"
       },
-      "deferred_at": "2026-04-10T14:08:14.855016"
+      "deferred_at": "2026-04-10T14:08:14.855016",
+      "reopened_at": "2026-04-10T14:22:23.779155",
+      "legal_reopen": {
+        "reviewer_name": "LEGAL_TEAM",
+        "notes": null,
+        "reopened_at": "2026-04-10T14:22:23.779155"
+      },
+      "approved_at": "2026-04-10T14:24:18.963461",
+      "versioning_status": "versioned",
+      "freeze_timestamp": null,
+      "freeze_released_at": "2026-04-10T14:24:18.965673",
+      "regulatory_state_updated": true,
+      "revalidation_triggered": true,
+      "processed_at": "2026-04-10T14:24:18.965678"
     }
   ]
 }

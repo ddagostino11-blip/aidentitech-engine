@@ -63,7 +63,6 @@ def handle_legal_decision(
         event["status"] = "legal_rejected"
         event["rejected_at"] = now
 
-        # reject = freeze mantenuto
         event["freeze_active"] = True
         if not event.get("freeze_reason"):
             event["freeze_reason"] = "legal_rejected"
@@ -75,7 +74,6 @@ def handle_legal_decision(
         event["status"] = "legal_deferred"
         event["deferred_at"] = now
 
-        # defer = freeze mantenuto
         event["freeze_active"] = True
         if not event.get("freeze_reason"):
             event["freeze_reason"] = "legal_deferred"
@@ -104,3 +102,41 @@ def handle_legal_decision(
         response["freeze_released_at"] = event.get("freeze_released_at")
 
     return response
+
+
+def handle_legal_reopen(
+    event_id: str,
+    reviewer_name: str = "LEGAL_TEAM",
+    notes: str | None = None
+) -> Dict[str, Any]:
+    store = load_event_store()
+    event = _find_event(store, event_id)
+
+    if not event:
+        return {"error": "event_not_found"}
+
+    if event.get("status") != "legal_deferred":
+        return {"error": "invalid_state", "current_status": event.get("status")}
+
+    now = datetime.utcnow().isoformat()
+
+    event["status"] = "pending_legal_review"
+    event["reopened_at"] = now
+    event["freeze_active"] = True
+
+    event["legal_reopen"] = {
+        "reviewer_name": reviewer_name,
+        "notes": notes,
+        "reopened_at": now
+    }
+
+    print(f"[Sentinel] Event {event_id} REOPENED by {reviewer_name}")
+    save_event_store(store)
+
+    return {
+        "event_id": event_id,
+        "status": event["status"],
+        "freeze_active": event.get("freeze_active"),
+        "freeze_reason": event.get("freeze_reason"),
+        "legal_reopen": event.get("legal_reopen"),
+    }

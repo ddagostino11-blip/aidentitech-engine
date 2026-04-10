@@ -9,7 +9,10 @@ from services.validation_service import execute_validation
 from core.ledger_chain import append_ledger_entry
 from src.modules.registry import AVAILABLE_MODULES
 from src.orchestrator.pipeline import run_validation_pipeline
-from src.sentinel.legal_decision_handler import handle_legal_decision
+from src.sentinel.legal_decision_handler import (
+    handle_legal_decision,
+    handle_legal_reopen,
+)
 from src.services.event_store import filter_events
 
 app = FastAPI(title="Aidentitech Engine API")
@@ -50,6 +53,12 @@ class ValidateRequest(BaseModel):
 class LegalDecisionRequest(BaseModel):
     event_id: str
     decision: str
+    reviewer_name: Optional[str] = "LEGAL_TEAM"
+    notes: Optional[str] = None
+
+
+class LegalReopenRequest(BaseModel):
+    event_id: str
     reviewer_name: Optional[str] = "LEGAL_TEAM"
     notes: Optional[str] = None
 
@@ -166,4 +175,31 @@ def legal_decision(request: LegalDecisionRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Legal decision error: {str(e)}"
+        )
+
+
+@app.post("/legal/reopen")
+def legal_reopen(request: LegalReopenRequest):
+    try:
+        result = handle_legal_reopen(
+            event_id=request.event_id,
+            reviewer_name=request.reviewer_name or "LEGAL_TEAM",
+            notes=request.notes
+        )
+
+        if result.get("error") == "event_not_found":
+            raise HTTPException(status_code=404, detail="event_not_found")
+
+        if result.get("error") == "invalid_state":
+            raise HTTPException(status_code=400, detail=result)
+
+        return result
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Legal reopen error: {str(e)}"
         )
