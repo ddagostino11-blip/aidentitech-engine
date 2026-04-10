@@ -105,6 +105,8 @@ def create_regulatory_event(
     legal_tasks: Optional[List[Dict[str, Any]]] = None,
     extra_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+
     event = {
         "event_id": generate_event_id(),
         "delta_id": delta_id or str(uuid.uuid4()),
@@ -117,9 +119,16 @@ def create_regulatory_event(
         "status": "pending_legal_review",
         "freeze_active": freeze_active,
         "freeze_reason": freeze_reason,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": now,
         "legal_tasks": legal_tasks or [],
         "impacts_detected": impacts_detected,
+        "audit_trail": [
+            {
+                "action": "created",
+                "actor": "SYSTEM",
+                "timestamp": now
+            }
+        ]
     }
 
     if extra_fields:

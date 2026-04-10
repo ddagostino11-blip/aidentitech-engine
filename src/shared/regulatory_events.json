@@ -387,6 +387,44 @@
       "regulatory_state_updated": true,
       "revalidation_triggered": true,
       "processed_at": "2026-04-10T14:42:36.019924"
+    },
+    {
+      "event_id": "event-552d766b-8baf-4b5d-af6a-8b2584d01651",
+      "delta_id": "02011326-024c-4251-a9cf-ed155536851b",
+      "domain": "pharma",
+      "jurisdiction": "EU",
+      "rule_id": "PHARMA_REJECTED",
+      "change_type": "validation_review_required",
+      "impact_level": "HIGH",
+      "priority": "HIGH",
+      "status": "pending_legal_review",
+      "freeze_active": true,
+      "freeze_reason": "auto_regulatory_high_impact",
+      "created_at": "2026-04-10T15:02:59.591273",
+      "legal_tasks": [
+        {
+          "review_id": "test-client-PROD-AUDIT-001-pharma",
+          "status": "pending_review",
+          "priority": "HIGH"
+        }
+      ],
+      "impacts_detected": 18,
+      "audit_trail": [
+        {
+          "action": "created",
+          "actor": "SYSTEM",
+          "timestamp": "2026-04-10T15:02:59.591273"
+        }
+      ],
+      "client_id": "test-client",
+      "product_id": "PROD-AUDIT-001",
+      "source": "validation_pipeline",
+      "decision_snapshot": {
+        "status": "REJECTED",
+        "severity": "HIGH",
+        "recommended_action": "HOLD_BATCH",
+        "review_required": true
+      }
     }
   ]
 }
