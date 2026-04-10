@@ -146,7 +146,21 @@ def get_legal_events(
         store = load_event_store()
         events = store.get("events", [])
 
-        filtered = filter_events(
+        # 👉 filtro completo SENZA paginazione (per count corretto)
+        filtered_all = filter_events(
+            events=events,
+            status=status,
+            domain=domain,
+            client_id=client_id,
+            product_id=product_id,
+            limit=None,
+            offset=0,
+            sort_by=sort_by,
+            order=order,
+        )
+
+        # 👉 pagina richiesta
+        paged = filter_events(
             events=events,
             status=status,
             domain=domain,
@@ -159,8 +173,8 @@ def get_legal_events(
         )
 
         return {
-            "count": len(filtered),
-            "events": filtered
+            "count": len(filtered_all),
+            "events": paged
         }
 
     except Exception as e:
