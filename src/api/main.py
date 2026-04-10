@@ -9,6 +9,7 @@ from services.validation_service import execute_validation
 from core.ledger_chain import append_ledger_entry
 from src.modules.registry import AVAILABLE_MODULES
 from src.sentinel.legal_decision_handler import handle_legal_decision
+from src.services.event_store import filter_events
 
 app = FastAPI(title="Aidentitech Engine API")
 
@@ -152,6 +153,23 @@ def validate(request: ValidateRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Validation error: {str(e)}"
+        )
+
+
+@app.get("/legal/events")
+def get_legal_events(status: Optional[str] = None, domain: Optional[str] = None):
+    try:
+        events = filter_events(status=status, domain=domain)
+
+        return {
+            "count": len(events),
+            "events": events
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Legal events error: {str(e)}"
         )
 
 
