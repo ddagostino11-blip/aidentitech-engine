@@ -1,24 +1,12 @@
 from typing import Dict, Any, Optional
-import json
-import os
 from datetime import datetime
 
 from src.sentinel.post_approval_executor import process_approved_events
-
-EVENTS_FILE = "src/shared/regulatory_events.json"
-
-
-def _load_events() -> Dict[str, Any]:
-    if not os.path.exists(EVENTS_FILE):
-        return {"events": []}
-
-    with open(EVENTS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _save_events(data: Dict[str, Any]) -> None:
-    with open(EVENTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+from src.services.event_store import (
+    load_event_store,
+    save_event_store,
+    find_event_by_id,
+)
 
 
 def _find_event(store: Dict[str, Any], event_id: str) -> Optional[Dict[str, Any]]:
@@ -34,7 +22,7 @@ def handle_legal_decision(
     reviewer_name: str = "LEGAL_TEAM",
     notes: str | None = None
 ) -> Dict[str, Any]:
-    store = _load_events()
+    store = load_event_store()
     event = _find_event(store, event_id)
 
     if not event:
@@ -62,11 +50,11 @@ def handle_legal_decision(
 
         print(f"[Sentinel] Event {event_id} APPROVED by {reviewer_name}")
 
-        _save_events(store)
+        save_event_store(store)
 
         executor_result = process_approved_events()
 
-        store = _load_events()
+        store = load_event_store()
         event = _find_event(store, event_id)
 
     elif decision == "reject":
@@ -78,14 +66,14 @@ def handle_legal_decision(
             event["freeze_released_at"] = now
 
         print(f"[Sentinel] Event {event_id} REJECTED by {reviewer_name}")
-        _save_events(store)
+        save_event_store(store)
 
     elif decision == "defer":
         event["status"] = "legal_deferred"
         event["deferred_at"] = now
 
         print(f"[Sentinel] Event {event_id} DEFERRED by {reviewer_name}")
-        _save_events(store)
+        save_event_store(store)
 
     else:
         return {"error": "invalid_decision"}
