@@ -10,7 +10,7 @@
       "impact_level": "HIGH",
       "priority": "HIGH",
       "status": "legal_approved",
-      "freeze_active": true,
+      "freeze_active": false,
       "created_at": "2026-04-09T16:27:16.491917",
       "legal_tasks": [
         {
@@ -30,7 +30,10 @@
       "versioning_status": "versioned",
       "regulatory_state_updated": true,
       "revalidation_triggered": true,
-      "processed_at": "2026-04-09T22:03:52.715012"
+      "processed_at": "2026-04-09T22:03:52.715012",
+      "freeze_reason": null,
+      "freeze_timestamp": null,
+      "freeze_released_at": "2026-04-10T10:25:07.011534"
     },
     {
       "event_id": "event-a756ead7-80b6-4d56-bef2-551221208a12",
@@ -42,7 +45,7 @@
       "impact_level": "HIGH",
       "priority": "HIGH",
       "status": "legal_approved",
-      "freeze_active": true,
+      "freeze_active": false,
       "created_at": "2026-04-09T16:27:16.491953",
       "legal_tasks": [
         {
@@ -62,7 +65,10 @@
       "versioning_status": "versioned",
       "regulatory_state_updated": true,
       "revalidation_triggered": true,
-      "processed_at": "2026-04-10T09:43:38.731311"
+      "processed_at": "2026-04-10T09:43:38.731311",
+      "freeze_reason": null,
+      "freeze_timestamp": null,
+      "freeze_released_at": "2026-04-10T10:25:07.011935"
     },
     {
       "event_id": "event-e4c9c2e3-680f-4e51-9078-7290e8f15261",
@@ -105,8 +111,8 @@
       "impact_level": "HIGH",
       "priority": "HIGH",
       "status": "legal_approved",
-      "freeze_active": true,
-      "freeze_reason": "auto_regulatory_high_impact",
+      "freeze_active": false,
+      "freeze_reason": null,
       "created_at": "2026-04-09T17:24:31.628975",
       "legal_tasks": [
         {
@@ -126,7 +132,9 @@
       "versioning_status": "versioned",
       "regulatory_state_updated": true,
       "revalidation_triggered": true,
-      "processed_at": "2026-04-09T17:37:43.137480"
+      "processed_at": "2026-04-09T17:37:43.137480",
+      "freeze_timestamp": null,
+      "freeze_released_at": "2026-04-10T10:25:07.011940"
     },
     {
       "event_id": "event-78c25bb2-236b-4683-b050-af3c192b3db3",
@@ -138,8 +146,8 @@
       "impact_level": "HIGH",
       "priority": "HIGH",
       "status": "legal_approved",
-      "freeze_active": true,
-      "freeze_reason": "auto_regulatory_high_impact",
+      "freeze_active": false,
+      "freeze_reason": null,
       "created_at": "2026-04-09T17:24:31.629756",
       "legal_tasks": [
         {
@@ -159,7 +167,9 @@
       "versioning_status": "versioned",
       "regulatory_state_updated": true,
       "revalidation_triggered": true,
-      "processed_at": "2026-04-09T20:58:35.863584"
+      "processed_at": "2026-04-09T20:58:35.863584",
+      "freeze_timestamp": null,
+      "freeze_released_at": "2026-04-10T10:25:07.011942"
     },
     {
       "event_id": "event-e9c1939a-93cb-40eb-8812-36644a70076a",

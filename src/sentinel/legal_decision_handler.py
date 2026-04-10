@@ -5,7 +5,6 @@ from src.sentinel.post_approval_executor import process_approved_events
 from src.services.event_store import (
     load_event_store,
     save_event_store,
-    find_event_by_id,
 )
 
 

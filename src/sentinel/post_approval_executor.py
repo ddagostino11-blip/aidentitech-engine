@@ -1,64 +1,46 @@
-import json
-import os
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 
-EVENTS_FILE = "src/shared/regulatory_events.json"
-STATE_FILE = "src/shared/regulatory_state.json"
-
-
-def _load_events() -> List[Dict[str, Any]]:
-    with open(EVENTS_FILE, "r") as f:
-        data = json.load(f)
-    return data.get("events", [])
-
-
-def _save_events(events: List[Dict[str, Any]]) -> None:
-    with open(EVENTS_FILE, "w") as f:
-        json.dump({"events": events}, f, indent=2)
-
-
-def _load_state() -> Dict[str, Any]:
-    if not os.path.exists(STATE_FILE):
-        return {}
-
-    with open(STATE_FILE, "r") as f:
-        return json.load(f)
-
-
-def _save_state(state: Dict[str, Any]) -> None:
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+from src.services.event_store import load_event_store, save_event_store
+from src.services.state_store import update_domain_state
 
 
 def _update_regulatory_state(event: Dict[str, Any]) -> None:
-    state = _load_state()
-
     domain = event.get("domain")
 
-    if domain not in state:
-        state[domain] = {}
+    if not domain:
+        return
 
-    # ✅ UNFREEZE + stato attivo
-    state[domain]["status"] = "ACTIVE"
-    state[domain]["freeze_active"] = False
-    state[domain]["freeze_reason"] = None
-    state[domain]["freeze_timestamp"] = None
-    state[domain]["triggered_by"] = event.get("event_id")
-
-    # audit
-    state[domain]["last_updated"] = datetime.utcnow().isoformat()
-
-    _save_state(state)
+    update_domain_state(domain, {
+        "status": "ACTIVE",
+        "freeze_active": False,
+        "freeze_reason": None,
+        "freeze_timestamp": None,
+        "triggered_by": event.get("event_id"),
+        "last_updated": datetime.utcnow().isoformat(),
+    })
 
     print(f"[Executor] UNFREEZE applied to {domain}")
 
 
 def process_approved_events() -> Dict[str, Any]:
-    events = _load_events()
+    store = load_event_store()
+    events = store.get("events", [])
     processed = []
+    repaired = []
 
     for event in events:
+        # FIX retroattivo per eventi già approvati ma rimasti congelati nello storico
+        if event.get("status") == "legal_approved" and event.get("freeze_active") is True:
+            event["freeze_active"] = False
+            event["freeze_reason"] = None
+            event["freeze_timestamp"] = None
+
+            if not event.get("freeze_released_at"):
+                event["freeze_released_at"] = datetime.utcnow().isoformat()
+
+            repaired.append(event["event_id"])
+
         if event.get("status") != "legal_approved":
             continue
 
@@ -72,6 +54,12 @@ def process_approved_events() -> Dict[str, Any]:
         _update_regulatory_state(event)
         event["regulatory_state_updated"] = True
 
+        # 2b. allinea anche lo storico evento
+        event["freeze_active"] = False
+        event["freeze_reason"] = None
+        event["freeze_timestamp"] = None
+        event["freeze_released_at"] = datetime.utcnow().isoformat()
+
         # 3. trigger downstream
         event["revalidation_triggered"] = True
 
@@ -82,9 +70,11 @@ def process_approved_events() -> Dict[str, Any]:
 
         print(f"[Executor] Event {event['event_id']} fully processed")
 
-    _save_events(events)
+    save_event_store(store)
 
     return {
         "processed_events": len(processed),
-        "event_ids": processed
+        "event_ids": processed,
+        "repaired_events": len(repaired),
+        "repaired_event_ids": repaired
     }
