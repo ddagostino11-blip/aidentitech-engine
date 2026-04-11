@@ -77,6 +77,22 @@ def generate_event_id() -> str:
     return f"event-{uuid.uuid4()}"
 
 
+def get_event_audit(event_id: str) -> Optional[List[Dict[str, Any]]]:
+    event = find_event_by_id(event_id)
+
+    if not event:
+        return None
+
+    audit = event.get("audit_trail", [])
+
+    sorted_audit = sorted(
+        audit,
+        key=lambda item: item.get("timestamp", "")
+    )
+
+    return sorted_audit
+
+
 def create_regulatory_event(
     domain: str,
     rule_id: str,

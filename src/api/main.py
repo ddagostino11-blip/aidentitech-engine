@@ -13,7 +13,7 @@ from src.sentinel.legal_decision_handler import (
     handle_legal_decision,
     handle_legal_reopen,
 )
-from src.services.event_store import load_event_store
+from src.services.event_store import load_event_store, get_event_audit
 from src.services.event_query import filter_events
 
 app = FastAPI(title="Aidentitech Engine API")
@@ -146,7 +146,6 @@ def get_legal_events(
         store = load_event_store()
         events = store.get("events", [])
 
-        # 👉 filtro completo SENZA paginazione (per count corretto)
         filtered_all = filter_events(
             events=events,
             status=status,
@@ -159,7 +158,6 @@ def get_legal_events(
             order=order,
         )
 
-        # 👉 pagina richiesta
         paged = filter_events(
             events=events,
             status=status,
@@ -181,6 +179,32 @@ def get_legal_events(
         raise HTTPException(
             status_code=500,
             detail=f"Legal events error: {str(e)}"
+        )
+
+
+@app.get("/legal/events/{event_id}/audit")
+def get_legal_events_audit(event_id: str):
+    try:
+        audit = get_event_audit(event_id)
+
+        if audit is None:
+            raise HTTPException(
+                status_code=404,
+                detail="event_not_found"
+            )
+
+        return {
+            "event_id": event_id,
+            "steps": audit
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Audit error: {str(e)}"
         )
 
 
