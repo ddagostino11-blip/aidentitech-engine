@@ -22,7 +22,7 @@
       "type": "numeric_lt",
       "field": "temperature",
       "threshold": 2,
-      "status": "WARNING",
+      "status": "REVIEW",
       "severity": "MEDIUM",
       "risk_score": 20,
       "issue_code": "temperature_warning_low",
@@ -33,7 +33,7 @@
       "type": "numeric_gt",
       "field": "temperature",
       "threshold": 8,
-      "status": "WARNING",
+      "status": "REVIEW",
       "severity": "MEDIUM",
       "risk_score": 20,
       "issue_code": "temperature_warning_high",
@@ -64,7 +64,7 @@
   ],
   "actions": {
     "APPROVED": "RELEASE_BATCH",
-    "WARNING": "QUALITY_REVIEW",
+    "REVIEW": "QUALITY_REVIEW",
     "REJECTED": "HOLD_BATCH",
     "CRITICAL": "BLOCK_AND_ESCALATE"
   }

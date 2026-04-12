@@ -2,11 +2,13 @@ from src.core.rule_engine import evaluate_rules
 from src.core.explainer import build_explanation
 from src.modules.pharma.policy import apply_policy
 
+
 def _normalize_pharma_rules(module_config: dict) -> list:
     rules = module_config.get("rules", {})
 
     normalized_rules = []
 
+    # Required fields
     for field in rules.get("required_fields", []):
         normalized_rules.append({
             "rule_id": f"required_{field}",
@@ -17,6 +19,7 @@ def _normalize_pharma_rules(module_config: dict) -> list:
             "recommended_action": "HOLD_BATCH"
         })
 
+    # Checks
     for rule in rules.get("checks", []):
         normalized_rules.append({
             "rule_id": rule.get("rule_id"),
@@ -43,29 +46,10 @@ def _severity_rank(severity: str) -> int:
     return ranking.get(severity, 0)
 
 
-def _status_rank(status: str) -> int:
-    ranking = {
-        "APPROVED": 1,
-        "WARNING": 2,
-        "REJECTED": 3,
-        "CRITICAL": 4
-    }
-    return ranking.get(status, 0)
-
-
-def _action_rank(action: str) -> int:
-    ranking = {
-        "RELEASE_BATCH": 1,
-        "QUALITY_REVIEW": 2,
-        "HOLD_BATCH": 3,
-        "BLOCK_AND_ESCALATE": 4
-    }
-    return ranking.get(action, 0)
-
-
 def run(module_config: dict, payload: dict):
     normalized_rules = _normalize_pharma_rules(module_config)
     compliance_scope = module_config.get("compliance_scope", {})
+    action_map = module_config.get("rules", {}).get("actions", {})
 
     engine_result = evaluate_rules(payload, normalized_rules)
 
@@ -79,12 +63,22 @@ def run(module_config: dict, payload: dict):
         "compliance_scope": compliance_scope,
     }
 
-    # Collect issues
+    # Normalize issues
     for issue in engine_result.get("issues", []):
-        result["issues"].append(issue)
+        raw_action = issue.get("recommended_action", "RELEASE_BATCH")
+        normalized_issue = {
+            "code": issue.get("code"),
+            "field": issue.get("field"),
+            "actual_value": issue.get("actual_value"),
+            "threshold": issue.get("threshold"),
+            "severity": issue.get("severity", "LOW"),
+            "recommended_action": action_map.get(raw_action, raw_action)
+        }
+
+        result["issues"].append(normalized_issue)
         result["risk_score"] += issue.get("risk_score", 0)
 
-    # Aggregation logic
+    # Aggregation
     if result["issues"]:
         max_severity = max(
             result["issues"],
@@ -94,11 +88,21 @@ def run(module_config: dict, payload: dict):
         max_severity = "LOW"
 
     result["severity"] = max_severity
+
     result["blocking_issues_count"] = len([
-        i for i in result["issues"] if i.get("severity") == "HIGH"
+        i for i in result["issues"] if i.get("severity") in ["HIGH", "CRITICAL"]
     ])
 
-    if max_severity == "HIGH":
+    # Enterprise decision logic
+    if max_severity == "CRITICAL":
+        result["status"] = "REJECTED"
+        result["recommended_action"] = "BLOCK_AND_ESCALATE"
+        result["decision_code"] = "PHARMA_CRITICAL"
+        result["review_required"] = True
+        result["regulatory_impact"] = "HIGH"
+        result["batch_disposition"] = "BLOCKED"
+
+    elif max_severity == "HIGH":
         result["status"] = "REJECTED"
         result["recommended_action"] = "HOLD_BATCH"
         result["decision_code"] = "PHARMA_REJECTED"
@@ -106,11 +110,27 @@ def run(module_config: dict, payload: dict):
         result["regulatory_impact"] = "HIGH"
         result["batch_disposition"] = "QUARANTINED"
 
+    elif max_severity == "MEDIUM":
+        result["status"] = "REVIEW"
+        result["recommended_action"] = "QUALITY_REVIEW"
+        result["decision_code"] = "PHARMA_WARNING"
+        result["review_required"] = True
+        result["regulatory_impact"] = "MEDIUM"
+        result["batch_disposition"] = "ON_HOLD"
+
+    else:
+        result["status"] = "APPROVED"
+        result["recommended_action"] = "RELEASE_BATCH"
+        result["decision_code"] = "PHARMA_APPROVED"
+        result["review_required"] = False
+        result["regulatory_impact"] = "LOW"
+        result["batch_disposition"] = "RELEASED"
+
     # Explanation + payload
     result["explanation"] = build_explanation(result)
     result["payload_received"] = payload
 
-    # 👉 POLICY LAYER (NUOVO)
+    # Policy layer
     result = apply_policy(result, module_config, payload)
 
     return result

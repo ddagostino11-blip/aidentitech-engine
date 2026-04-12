@@ -30,7 +30,7 @@ def build_explanation(result: dict) -> dict:
         summary = "One or more critical validation rules were triggered."
     elif status == "REJECTED":
         summary = "The payload was rejected because one or more blocking conditions were found."
-    elif status == "WARNING":
+    elif status == "REVIEW":
         summary = "Validation completed with warnings that require review."
     else:
         summary = "Validation completed successfully."
