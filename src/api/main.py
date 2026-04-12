@@ -7,7 +7,10 @@ from services.validation_service import execute_validation
 from core.ledger_chain import append_ledger_entry
 from src.modules.registry import AVAILABLE_MODULES
 
-app = FastAPI(title="Aidentitech Engine API")
+# 🔧 Centralized constant
+ENGINE_NAME = "Aidentitech"
+
+app = FastAPI(title=f"{ENGINE_NAME} Engine API")
 
 
 class ValidateRequest(BaseModel):
@@ -50,9 +53,10 @@ def load_module_config(module_name: str):
             detail=f"Modulo non valido: {module_name}"
         )
 
+
 @app.get("/")
 def root():
-    return {"status": "engine running"}
+    return {"status": f"{ENGINE_NAME} running"}
 
 
 @app.get("/status")
@@ -61,7 +65,7 @@ def status(module: str = "pharma"):
     module_config = load_module_config(module)
 
     return {
-        "engine": "aidentitech",
+        "engine": ENGINE_NAME,
         "module": module,
         "status": "ready",
         "config_loaded": bool(config),
@@ -104,7 +108,7 @@ def validate(request: ValidateRequest):
         })
 
         return {
-            "engine": "aidentitech",
+            "engine": ENGINE_NAME,
             "module": request.module,
             "client_id": request.client_id,
 
