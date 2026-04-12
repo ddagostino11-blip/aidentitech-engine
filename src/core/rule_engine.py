@@ -6,10 +6,14 @@ def evaluate_rules(payload: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict
     audit = []
 
     max_severity = "LOW"
-    status = "APPROVED"
-    recommended_action = "RELEASE_BATCH"
+    total_risk_score = 0
 
-    severity_order = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+    severity_order = {
+        "LOW": 1,
+        "MEDIUM": 2,
+        "HIGH": 3,
+        "CRITICAL": 4
+    }
 
     for rule in rules:
         rule_id = rule.get("rule_id")
@@ -17,6 +21,7 @@ def evaluate_rules(payload: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict
         field = rule.get("field")
 
         actual_value = payload.get(field)
+        expected_value = rule.get("expected")
 
         outcome = "passed"
         triggered = False
@@ -27,17 +32,17 @@ def evaluate_rules(payload: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict
                 triggered = True
 
         elif rule_type == "numeric_gt":
-            if actual_value is not None and actual_value > rule.get("expected"):
+            if actual_value is not None and expected_value is not None and actual_value > expected_value:
                 outcome = "triggered"
                 triggered = True
 
         elif rule_type == "numeric_lt":
-            if actual_value is not None and actual_value < rule.get("expected"):
+            if actual_value is not None and expected_value is not None and actual_value < expected_value:
                 outcome = "triggered"
                 triggered = True
 
         elif rule_type == "boolean_equals":
-            if actual_value == rule.get("expected"):
+            if actual_value == expected_value:
                 outcome = "triggered"
                 triggered = True
 
@@ -46,40 +51,51 @@ def evaluate_rules(payload: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict
             "rule_type": rule_type,
             "field": field,
             "actual_value": actual_value,
-            "expected": rule.get("expected"),
+            "expected": expected_value,
             "outcome": outcome
         })
 
         if triggered:
             severity = rule.get("severity", "LOW")
+            risk_score = rule.get("risk_score", 0)
+            recommended_action = rule.get("recommended_action", "QUALITY_REVIEW")
+            issue_code = rule.get("issue_code", rule_id)
+            issue_status = rule.get("status", "APPROVED")
 
             issues.append({
-                "code": rule_id,
+                "code": issue_code,
                 "field": field,
                 "actual_value": actual_value,
-                "threshold": rule.get("expected"),
+                "threshold": expected_value,
                 "severity": severity,
-                "recommended_action": rule.get("action", "REVIEW")
+                "recommended_action": recommended_action,
+                "risk_score": risk_score,
+                "status": issue_status
             })
 
-            # aggiorna severità massima
+            total_risk_score += risk_score
+
             if severity_order.get(severity, 1) > severity_order.get(max_severity, 1):
                 max_severity = severity
 
-    # decision logic finale
-    if max_severity == "LOW":
+    # decision logic finale, coerente con la tua architettura attuale
+    if max_severity == "CRITICAL":
+        status = "CRITICAL"
+        recommended_action = "BLOCK_AND_ESCALATE"
+    elif max_severity == "HIGH":
+        status = "REJECTED"
+        recommended_action = "HOLD_BATCH"
+    elif max_severity == "MEDIUM":
+        status = "REVIEW"
+        recommended_action = "QUALITY_REVIEW"
+    else:
         status = "APPROVED"
         recommended_action = "RELEASE_BATCH"
-    elif max_severity == "MEDIUM":
-        status = "WARNING"
-        recommended_action = "QUALITY_REVIEW"
-    elif max_severity == "HIGH":
-        status = "CRITICAL"
-        recommended_action = "BLOCK_BATCH"
 
     result = {
         "status": status,
         "severity": max_severity,
+        "risk_score": total_risk_score,
         "issues": issues,
         "audit": audit,
         "recommended_action": recommended_action

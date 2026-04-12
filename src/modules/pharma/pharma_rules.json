@@ -3,7 +3,10 @@
     "product_id",
     "batch",
     "gmp_compliant",
-    "temperature"
+    "temperature",
+    "batch_record_reviewed",
+    "deviation_open",
+    "capa_open"
   ],
   "checks": [
     {
@@ -16,6 +19,39 @@
       "risk_score": 60,
       "issue_code": "gmp_non_compliant",
       "recommended_action": "HOLD_BATCH"
+    },
+    {
+      "rule_id": "batch_not_reviewed",
+      "type": "boolean_equals",
+      "field": "batch_record_reviewed",
+      "expected": false,
+      "status": "REVIEW",
+      "severity": "MEDIUM",
+      "risk_score": 30,
+      "issue_code": "batch_not_reviewed",
+      "recommended_action": "QUALITY_REVIEW"
+    },
+    {
+      "rule_id": "deviation_open",
+      "type": "boolean_equals",
+      "field": "deviation_open",
+      "expected": true,
+      "status": "CRITICAL",
+      "severity": "CRITICAL",
+      "risk_score": 90,
+      "issue_code": "deviation_open",
+      "recommended_action": "BLOCK_AND_ESCALATE"
+    },
+    {
+      "rule_id": "capa_open",
+      "type": "boolean_equals",
+      "field": "capa_open",
+      "expected": true,
+      "status": "REVIEW",
+      "severity": "MEDIUM",
+      "risk_score": 40,
+      "issue_code": "capa_open",
+      "recommended_action": "QUALITY_REVIEW"
     },
     {
       "rule_id": "temperature_warning_low",

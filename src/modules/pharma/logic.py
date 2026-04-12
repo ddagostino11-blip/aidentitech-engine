@@ -72,7 +72,9 @@ def run(module_config: dict, payload: dict):
             "actual_value": issue.get("actual_value"),
             "threshold": issue.get("threshold"),
             "severity": issue.get("severity", "LOW"),
-            "recommended_action": action_map.get(raw_action, raw_action)
+            "recommended_action": action_map.get(raw_action, raw_action),
+            "risk_score": issue.get("risk_score", 0),
+            "status": issue.get("status")
         }
 
         result["issues"].append(normalized_issue)
@@ -89,9 +91,14 @@ def run(module_config: dict, payload: dict):
 
     result["severity"] = max_severity
 
-    result["blocking_issues_count"] = len([
+    blocking_issues = [
         i for i in result["issues"] if i.get("severity") in ["HIGH", "CRITICAL"]
-    ])
+    ]
+    medium_issues = [
+        i for i in result["issues"] if i.get("severity") == "MEDIUM"
+    ]
+
+    result["blocking_issues_count"] = len(blocking_issues)
 
     # Enterprise decision logic
     if max_severity == "CRITICAL":
@@ -117,6 +124,18 @@ def run(module_config: dict, payload: dict):
         result["review_required"] = True
         result["regulatory_impact"] = "MEDIUM"
         result["batch_disposition"] = "ON_HOLD"
+
+        # Multi-issue escalation
+        if len(medium_issues) >= 2:
+            result["decision_code"] = "PHARMA_MULTI_WARNING"
+            result["regulatory_impact"] = "HIGH"
+            result["batch_disposition"] = "QUARANTINED"
+
+        # Risk-based escalation within review state
+        if result["risk_score"] >= 50:
+            result["decision_code"] = "PHARMA_HIGH_RISK_REVIEW"
+            result["regulatory_impact"] = "HIGH"
+            result["batch_disposition"] = "QUARANTINED"
 
     else:
         result["status"] = "APPROVED"
