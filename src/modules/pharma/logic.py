@@ -92,10 +92,12 @@ def run(module_config: dict, payload: dict):
     result["severity"] = max_severity
 
     blocking_issues = [
-        i for i in result["issues"] if i.get("severity") in ["HIGH", "CRITICAL"]
+        i for i in result["issues"]
+        if i.get("severity") in ["HIGH", "CRITICAL"]
     ]
     medium_issues = [
-        i for i in result["issues"] if i.get("severity") == "MEDIUM"
+        i for i in result["issues"]
+        if i.get("severity") == "MEDIUM"
     ]
 
     result["blocking_issues_count"] = len(blocking_issues)
@@ -118,24 +120,32 @@ def run(module_config: dict, payload: dict):
         result["batch_disposition"] = "QUARANTINED"
 
     elif max_severity == "MEDIUM":
-        result["status"] = "REVIEW"
-        result["recommended_action"] = "QUALITY_REVIEW"
-        result["decision_code"] = "PHARMA_WARNING"
-        result["review_required"] = True
-        result["regulatory_impact"] = "MEDIUM"
-        result["batch_disposition"] = "ON_HOLD"
-
-        # Multi-issue escalation
-        if len(medium_issues) >= 2:
-            result["decision_code"] = "PHARMA_MULTI_WARNING"
+        if result["blocking_issues_count"] > 0:
+            result["status"] = "REJECTED"
+            result["recommended_action"] = "HOLD_BATCH"
+            result["decision_code"] = "PHARMA_BLOCKING_ISSUES"
+            result["review_required"] = True
             result["regulatory_impact"] = "HIGH"
             result["batch_disposition"] = "QUARANTINED"
+        else:
+            result["status"] = "REVIEW"
+            result["recommended_action"] = "QUALITY_REVIEW"
+            result["review_required"] = True
 
-        # Risk-based escalation within review state
-        if result["risk_score"] >= 50:
-            result["decision_code"] = "PHARMA_HIGH_RISK_REVIEW"
-            result["regulatory_impact"] = "HIGH"
-            result["batch_disposition"] = "QUARANTINED"
+            # default
+            result["decision_code"] = "PHARMA_WARNING"
+            result["regulatory_impact"] = "MEDIUM"
+            result["batch_disposition"] = "ON_HOLD"
+
+            # escalation priority
+            if result["risk_score"] >= 50:
+                result["decision_code"] = "PHARMA_HIGH_RISK_REVIEW"
+                result["regulatory_impact"] = "HIGH"
+                result["batch_disposition"] = "QUARANTINED"
+            elif len(medium_issues) >= 2:
+                result["decision_code"] = "PHARMA_MULTI_WARNING"
+                result["regulatory_impact"] = "HIGH"
+                result["batch_disposition"] = "QUARANTINED"
 
     else:
         result["status"] = "APPROVED"
