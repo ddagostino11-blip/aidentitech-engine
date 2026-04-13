@@ -12,6 +12,9 @@ from src.core.module_router import run_module
 # DB
 from src.core.db import init_db, insert_case
 
+# auth
+from src.core.auth import get_client_from_api_key
+
 # routes
 from src.api.routes_cases import router as cases_router
 
@@ -28,12 +31,6 @@ def startup_event():
 
 # endpoint /cases
 app.include_router(cases_router)
-
-
-def _require_client_id(x_client_id: str | None) -> str:
-    if not x_client_id or not x_client_id.strip():
-        raise HTTPException(status_code=400, detail="Missing X-Client-Id header")
-    return x_client_id.strip()
 
 
 class ValidateRequest(BaseModel):
@@ -99,9 +96,12 @@ def status(module: str = "pharma"):
 @app.post("/validate")
 def validate(
     request: ValidateRequest,
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _require_client_id(x_client_id)
+    try:
+        client_id = get_client_from_api_key(x_api_key)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
     if request.module not in AVAILABLE_MODULES:
         raise HTTPException(
