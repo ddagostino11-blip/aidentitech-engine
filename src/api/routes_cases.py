@@ -1,16 +1,18 @@
 from fastapi import APIRouter, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from src.core.db import get_connection, get_case_by_decision_id
+from src.core.auth import get_client_from_api_key
 import csv
 import io
 
 router = APIRouter(tags=["cases"])
 
 
-def _require_client_id(x_client_id: str | None) -> str:
-    if not x_client_id or not x_client_id.strip():
-        raise HTTPException(status_code=400, detail="Missing X-Client-Id header")
-    return x_client_id.strip()
+def _client_from_key(x_api_key: str | None) -> str:
+    try:
+        return get_client_from_api_key(x_api_key)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
 
 # =========================
@@ -18,9 +20,9 @@ def _require_client_id(x_client_id: str | None) -> str:
 # =========================
 @router.get("/cases/stats")
 def get_cases_stats(
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _require_client_id(x_client_id)
+    client_id = _client_from_key(x_api_key)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -66,9 +68,9 @@ def export_cases(
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=10000),
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _require_client_id(x_client_id)
+    client_id = _client_from_key(x_api_key)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -152,9 +154,9 @@ def get_cases(
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _require_client_id(x_client_id)
+    client_id = _client_from_key(x_api_key)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -202,9 +204,9 @@ def get_cases(
 @router.get("/cases/{decision_id}")
 def get_case_by_id(
     decision_id: str,
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _require_client_id(x_client_id)
+    client_id = _client_from_key(x_api_key)
 
     case = get_case_by_decision_id(decision_id)
 
