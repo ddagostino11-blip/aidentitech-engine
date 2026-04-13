@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from src.core.db import get_connection, get_case_by_decision_id
 import csv
@@ -7,43 +7,39 @@ import io
 router = APIRouter(tags=["cases"])
 
 
+def _require_client_id(x_client_id: str | None) -> str:
+    if not x_client_id or not x_client_id.strip():
+        raise HTTPException(status_code=400, detail="Missing X-Client-Id header")
+    return x_client_id.strip()
+
+
 # =========================
-# 1️⃣ STATS (SEMPRE PRIMA)
+# 1️⃣ STATS
 # =========================
 @router.get("/cases/stats")
 def get_cases_stats(
-    client_id: str | None = Query(default=None),
+    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
 ):
+    client_id = _require_client_id(x_client_id)
+
     conn = get_connection()
     cursor = conn.cursor()
 
-    base_query = "FROM cases"
-    conditions = []
-    params = []
+    base_query = "FROM cases WHERE client_id = ?"
+    params = [client_id]
 
-    # filtro opzionale per client
-    if client_id:
-        conditions.append("client_id = ?")
-        params.append(client_id)
-
-    if conditions:
-        base_query += " WHERE " + " AND ".join(conditions)
-
-    # aggregazione per status
     cursor.execute(
         f"SELECT status, COUNT(*) as count {base_query} GROUP BY status",
         tuple(params),
     )
     status_rows = cursor.fetchall()
 
-    # aggregazione per severity
     cursor.execute(
         f"SELECT severity, COUNT(*) as count {base_query} GROUP BY severity",
         tuple(params),
     )
     severity_rows = cursor.fetchall()
 
-    # totale
     cursor.execute(
         f"SELECT COUNT(*) as total {base_query}",
         tuple(params),
@@ -53,6 +49,7 @@ def get_cases_stats(
     conn.close()
 
     return {
+        "client_id": client_id,
         "total_cases": total_row["total"] if total_row else 0,
         "by_status": {row["status"]: row["count"] for row in status_rows},
         "by_severity": {row["severity"]: row["count"] for row in severity_rows},
@@ -64,13 +61,15 @@ def get_cases_stats(
 # =========================
 @router.get("/cases/export")
 def export_cases(
-    client_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
     severity: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=10000),
+    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
 ):
+    client_id = _require_client_id(x_client_id)
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -81,12 +80,8 @@ def export_cases(
         FROM cases
     """
 
-    conditions = []
-    params = []
-
-    if client_id:
-        conditions.append("client_id = ?")
-        params.append(client_id)
+    conditions = ["client_id = ?"]
+    params = [client_id]
 
     if status:
         conditions.append("status = ?")
@@ -104,9 +99,7 @@ def export_cases(
         conditions.append("created_at <= ?")
         params.append(date_to)
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
+    query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY id DESC LIMIT ?"
     params.append(limit)
 
@@ -154,13 +147,15 @@ def export_cases(
 # =========================
 @router.get("/cases")
 def get_cases(
-    client_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
     severity: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
+    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
 ):
+    client_id = _require_client_id(x_client_id)
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -171,12 +166,8 @@ def get_cases(
         FROM cases
     """
 
-    conditions = []
-    params = []
-
-    if client_id:
-        conditions.append("client_id = ?")
-        params.append(client_id)
+    conditions = ["client_id = ?"]
+    params = [client_id]
 
     if status:
         conditions.append("status = ?")
@@ -194,9 +185,7 @@ def get_cases(
         conditions.append("created_at <= ?")
         params.append(date_to)
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
+    query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY id DESC LIMIT ?"
     params.append(limit)
 
@@ -208,13 +197,21 @@ def get_cases(
 
 
 # =========================
-# 4️⃣ SINGOLO CASE (SEMPRE ULTIMO)
+# 4️⃣ SINGOLO CASE
 # =========================
 @router.get("/cases/{decision_id}")
-def get_case_by_id(decision_id: str):
+def get_case_by_id(
+    decision_id: str,
+    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+):
+    client_id = _require_client_id(x_client_id)
+
     case = get_case_by_decision_id(decision_id)
 
     if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if case.get("client_id") != client_id:
         raise HTTPException(status_code=404, detail="Case not found")
 
     return case

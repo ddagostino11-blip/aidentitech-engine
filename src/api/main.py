@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, model_validator
 from datetime import datetime, timezone
 import uuid
@@ -9,26 +9,31 @@ from core.ledger_chain import append_ledger_entry
 from src.modules.registry import AVAILABLE_MODULES
 from src.core.module_router import run_module
 
-# 👉 DB
+# DB
 from src.core.db import init_db, insert_case
 
-# 👉 routes
+# routes
 from src.api.routes_cases import router as cases_router
-
 
 ENGINE_NAME = "Aidentitech"
 
 app = FastAPI(title=f"{ENGINE_NAME} Engine API")
 
 
-# 👉 init DB all’avvio
+# init DB all’avvio
 @app.on_event("startup")
 def startup_event():
     init_db()
 
 
-# 👉 endpoint /cases
+# endpoint /cases
 app.include_router(cases_router)
+
+
+def _require_client_id(x_client_id: str | None) -> str:
+    if not x_client_id or not x_client_id.strip():
+        raise HTTPException(status_code=400, detail="Missing X-Client-Id header")
+    return x_client_id.strip()
 
 
 class ValidateRequest(BaseModel):
@@ -92,7 +97,12 @@ def status(module: str = "pharma"):
 
 
 @app.post("/validate")
-def validate(request: ValidateRequest):
+def validate(
+    request: ValidateRequest,
+    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+):
+    client_id = _require_client_id(x_client_id)
+
     if request.module not in AVAILABLE_MODULES:
         raise HTTPException(
             status_code=400,
@@ -109,7 +119,7 @@ def validate(request: ValidateRequest):
         module_config = load_module_config(request.module)
         payload = request.payload or {}
 
-        # 👉 run engine
+        # run engine
         decision = run_module(
             request.module,
             module_config,
@@ -119,19 +129,19 @@ def validate(request: ValidateRequest):
         decision_id = str(uuid.uuid4())
         decision_timestamp = datetime.now(timezone.utc).isoformat()
 
-        # 👉 ledger
+        # ledger
         ledger_entry = append_ledger_entry({
-            "client_id": request.client_id,
+            "client_id": client_id,
             "module": request.module,
             "decision": decision.get("status"),
             "decision_id": decision_id,
         })
 
-        # 👉 response finale
+        # response finale
         response = {
             "engine": ENGINE_NAME,
             "module": request.module,
-            "client_id": request.client_id,
+            "client_id": client_id,
             "status": decision.get("status"),
             "severity": decision.get("severity"),
             "risk_score": decision.get("risk_score"),
@@ -152,10 +162,10 @@ def validate(request: ValidateRequest):
             "ledger_hash": ledger_entry.get("hash"),
         }
 
-        # 👉 ✅ SALVATAGGIO DB (NUOVO)
+        # salvataggio DB
         insert_case({
             "decision_id": decision_id,
-            "client_id": request.client_id,
+            "client_id": client_id,
             "module": request.module,
             "status": decision.get("status"),
             "severity": decision.get("severity"),
