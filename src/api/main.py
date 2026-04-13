@@ -9,9 +9,26 @@ from core.ledger_chain import append_ledger_entry
 from src.modules.registry import AVAILABLE_MODULES
 from src.core.module_router import run_module
 
+# 👉 DB
+from src.core.db import init_db, insert_case
+
+# 👉 routes
+from src.api.routes_cases import router as cases_router
+
+
 ENGINE_NAME = "Aidentitech"
 
 app = FastAPI(title=f"{ENGINE_NAME} Engine API")
+
+
+# 👉 init DB all’avvio
+@app.on_event("startup")
+def startup_event():
+    init_db()
+
+
+# 👉 endpoint /cases
+app.include_router(cases_router)
 
 
 class ValidateRequest(BaseModel):
@@ -92,6 +109,7 @@ def validate(request: ValidateRequest):
         module_config = load_module_config(request.module)
         payload = request.payload or {}
 
+        # 👉 run engine
         decision = run_module(
             request.module,
             module_config,
@@ -101,6 +119,7 @@ def validate(request: ValidateRequest):
         decision_id = str(uuid.uuid4())
         decision_timestamp = datetime.now(timezone.utc).isoformat()
 
+        # 👉 ledger
         ledger_entry = append_ledger_entry({
             "client_id": request.client_id,
             "module": request.module,
@@ -108,6 +127,7 @@ def validate(request: ValidateRequest):
             "decision_id": decision_id,
         })
 
+        # 👉 response finale
         response = {
             "engine": ENGINE_NAME,
             "module": request.module,
@@ -131,6 +151,19 @@ def validate(request: ValidateRequest):
             "compliance_scope": decision.get("compliance_scope", {}),
             "ledger_hash": ledger_entry.get("hash"),
         }
+
+        # 👉 ✅ SALVATAGGIO DB (NUOVO)
+        insert_case({
+            "decision_id": decision_id,
+            "client_id": request.client_id,
+            "module": request.module,
+            "status": decision.get("status"),
+            "severity": decision.get("severity"),
+            "risk_score": decision.get("risk_score"),
+            "decision_code": decision.get("decision_code"),
+            "payload": payload,
+            "full_response": response,
+        })
 
         return response
 
