@@ -18,6 +18,9 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
+    # =========================
+    # CASES TABLE
+    # =========================
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,14 +43,66 @@ def init_db():
         ON cases(created_at)
     """)
 
-    # indice per filtro client (scalabilità base)
+    # indice per filtro client
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_cases_client_id
         ON cases(client_id)
     """)
 
+    # =========================
+    # API KEYS TABLE
+    # =========================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            api_key TEXT UNIQUE,
+            client_id TEXT,
+            created_at TEXT
+        )
+    """)
+
+    # indice per ricerca client
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_api_keys_client_id
+        ON api_keys(client_id)
+    """)
+
     conn.commit()
     conn.close()
+
+
+def insert_api_key(api_key: str, client_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT OR IGNORE INTO api_keys (api_key, client_id, created_at)
+        VALUES (?, ?, ?)
+    """, (
+        api_key,
+        client_id,
+        datetime.now(timezone.utc).isoformat()
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_client_by_api_key(api_key: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT client_id
+        FROM api_keys
+        WHERE api_key = ?
+        LIMIT 1
+    """, (api_key,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    return row["client_id"] if row else None
 
 
 def insert_case(data: dict):
