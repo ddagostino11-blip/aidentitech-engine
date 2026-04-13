@@ -1,5 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from src.core.db import get_connection, get_case_by_decision_id
+import csv
+import io
 
 router = APIRouter(tags=["cases"])
 
@@ -57,7 +60,97 @@ def get_cases_stats(
 
 
 # =========================
-# 2️⃣ LISTA CASI
+# 2️⃣ EXPORT CSV
+# =========================
+@router.get("/cases/export")
+def export_cases(
+    client_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    severity: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=10000),
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    query = """
+        SELECT decision_id, client_id, module,
+               status, severity, risk_score,
+               decision_code, created_at
+        FROM cases
+    """
+
+    conditions = []
+    params = []
+
+    if client_id:
+        conditions.append("client_id = ?")
+        params.append(client_id)
+
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+
+    if severity:
+        conditions.append("severity = ?")
+        params.append(severity)
+
+    if date_from:
+        conditions.append("created_at >= ?")
+        params.append(date_from)
+
+    if date_to:
+        conditions.append("created_at <= ?")
+        params.append(date_to)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "decision_id",
+        "client_id",
+        "module",
+        "status",
+        "severity",
+        "risk_score",
+        "decision_code",
+        "created_at",
+    ])
+
+    for row in rows:
+        writer.writerow([
+            row["decision_id"],
+            row["client_id"],
+            row["module"],
+            row["status"],
+            row["severity"],
+            row["risk_score"],
+            row["decision_code"],
+            row["created_at"],
+        ])
+
+    output.seek(0)
+
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cases_export.csv"},
+    )
+
+
+# =========================
+# 3️⃣ LISTA CASI
 # =========================
 @router.get("/cases")
 def get_cases(
@@ -115,7 +208,7 @@ def get_cases(
 
 
 # =========================
-# 3️⃣ SINGOLO CASE (SEMPRE ULTIMO)
+# 4️⃣ SINGOLO CASE (SEMPRE ULTIMO)
 # =========================
 @router.get("/cases/{decision_id}")
 def get_case_by_id(decision_id: str):
