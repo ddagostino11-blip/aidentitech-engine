@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, model_validator
+from datetime import datetime, timezone
+import uuid
 import importlib
 
 from core.config_loader import load_config
@@ -88,20 +90,25 @@ def validate(request: ValidateRequest):
 
     try:
         module_config = load_module_config(request.module)
+        payload = request.payload or {}
 
         decision = run_module(
             request.module,
             module_config,
-            request.payload or {}
+            payload
         )
+
+        decision_id = str(uuid.uuid4())
+        decision_timestamp = datetime.now(timezone.utc).isoformat()
 
         ledger_entry = append_ledger_entry({
             "client_id": request.client_id,
             "module": request.module,
             "decision": decision.get("status"),
+            "decision_id": decision_id,
         })
 
-        return {
+        response = {
             "engine": ENGINE_NAME,
             "module": request.module,
             "client_id": request.client_id,
@@ -117,11 +124,15 @@ def validate(request: ValidateRequest):
             "issues": decision.get("issues", []),
             "audit": decision.get("audit", []),
             "explanation": decision.get("explanation", {}),
-            "payload_received": decision.get("payload_received", request.payload or {}),
-            "versioning": decision.get("versioning", module_config.get("versioning", {})),
+            "decision_id": decision_id,
+            "decision_timestamp": decision_timestamp,
+            "policy_profile": decision.get("policy_profile"),
+            "versioning": module_config.get("versioning", {}),
             "compliance_scope": decision.get("compliance_scope", {}),
             "ledger_hash": ledger_entry.get("hash"),
         }
+
+        return response
 
     except HTTPException:
         raise
