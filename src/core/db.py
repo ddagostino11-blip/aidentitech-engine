@@ -34,10 +34,16 @@ def init_db():
         )
     """)
 
-    # indice corretto (fix definitivo errore precedente)
+    # indice per sorting temporale
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_cases_created_at
         ON cases(created_at)
+    """)
+
+    # indice per filtro client (scalabilità base)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cases_client_id
+        ON cases(client_id)
     """)
 
     conn.commit()
@@ -79,20 +85,56 @@ def insert_case(data: dict):
     conn.close()
 
 
-def get_cases(limit: int = 50):
+def get_cases(client_id: str | None = None, status: str | None = None, limit: int = 50):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    query = """
         SELECT id, decision_id, client_id, module,
                status, severity, risk_score,
                decision_code, created_at
         FROM cases
-        ORDER BY id DESC
-        LIMIT ?
-    """, (limit,))
+    """
 
+    conditions = []
+    params = []
+
+    if client_id:
+        conditions.append("client_id = ?")
+        params.append(client_id)
+
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+
+    cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
     conn.close()
 
     return [dict(row) for row in rows]
+
+
+def get_case_by_decision_id(decision_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT full_response
+        FROM cases
+        WHERE decision_id = ?
+        LIMIT 1
+    """, (decision_id,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return json.loads(row["full_response"])
