@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from src.core.db import get_connection, get_case_by_decision_id
 from src.core.auth import get_client_from_api_key
+from src.core.pdf_generator import generate_dossier_pdf
 import csv
 import io
 
@@ -243,7 +244,55 @@ def get_case_dossier(
 
 
 # =========================
-# 5️⃣ SINGOLO CASE
+# 5️⃣ DOSSIER PDF
+# =========================
+@router.get("/cases/{decision_id}/dossier/pdf")
+def get_case_dossier_pdf(
+    decision_id: str,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    client_id = _client_from_key(x_api_key)
+
+    case = get_case_by_decision_id(decision_id)
+
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if case.get("client_id") != client_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    dossier = {
+        "engine": case.get("engine"),
+        "decision_id": case.get("decision_id"),
+        "decision_timestamp": case.get("decision_timestamp"),
+        "client_id": case.get("client_id"),
+        "module": case.get("module"),
+        "decision": {
+            "status": case.get("status"),
+            "severity": case.get("severity"),
+            "risk_score": case.get("risk_score"),
+            "decision_code": case.get("decision_code"),
+            "recommended_action": case.get("recommended_action"),
+            "batch_disposition": case.get("batch_disposition"),
+        },
+        "audit": case.get("audit", []),
+        "integration": case.get("integration", {}),
+        "ledger_hash": case.get("ledger_hash"),
+    }
+
+    pdf_buffer = generate_dossier_pdf(dossier)
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=dossier_{decision_id}.pdf"
+        },
+    )
+
+
+# =========================
+# 6️⃣ SINGOLO CASE
 # =========================
 @router.get("/cases/{decision_id}")
 def get_case_by_id(
