@@ -568,3 +568,73 @@ def get_case_by_decision_id(decision_id: str):
     case = row["full_response"] if _is_postgres() else json.loads(row["full_response"])
     case["dossier_hash"] = row["dossier_hash"]
     return case
+
+
+def _build_case_summary(row: dict) -> dict:
+    if _is_postgres():
+        full_response = row["full_response"]
+    else:
+        full_response = json.loads(row["full_response"])
+
+    return {
+        "id": row["id"],
+        "decision_id": full_response.get("decision_id"),
+        "client_id": full_response.get("client_id"),
+        "module": full_response.get("module"),
+        "status": full_response.get("status"),
+        "severity": full_response.get("severity"),
+        "risk_score": full_response.get("risk_score"),
+        "decision_code": full_response.get("decision_code"),
+        "dossier_hash": row.get("dossier_hash"),
+        "created_at": str(row["created_at"]),
+    }
+
+
+def get_case_summaries(
+    client_id: str,
+    status: str | None = None,
+    severity: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 50,
+):
+    conn = get_connection()
+
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        placeholder = "%s"
+    else:
+        cursor = conn.cursor()
+        placeholder = "?"
+
+    query = f"""
+        SELECT id, full_response, dossier_hash, created_at
+        FROM cases
+        WHERE client_id = {placeholder}
+    """
+    params = [client_id]
+
+    if date_from:
+        query += f" AND created_at >= {placeholder}"
+        params.append(date_from)
+
+    if date_to:
+        query += f" AND created_at <= {placeholder}"
+        params.append(date_to)
+
+    query += f" ORDER BY id DESC LIMIT {placeholder}"
+    params.append(limit)
+
+    cursor.execute(query, tuple(params))
+    rows = _fetchall_dicts(cursor)
+    conn.close()
+
+    summaries = [_build_case_summary(row) for row in rows]
+
+    if status:
+        summaries = [row for row in summaries if row["status"] == status]
+
+    if severity:
+        summaries = [row for row in summaries if row["severity"] == severity]
+
+    return summaries
