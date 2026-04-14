@@ -1,0 +1,23 @@
+{
+  "context": {
+    "source_system": "MES",
+    "site": "Plant-1",
+    "line": "Line-A",
+    "timestamp": "2026-04-14T10:00:00Z"
+  },
+  "entity": {
+    "product_id": "PROD-123",
+    "batch": "BATCH-001"
+  },
+  "data": {
+    "gmp_compliant": true,
+    "temperature": 5,
+    "batch_record_reviewed": true,
+    "deviation_open": false,
+    "capa_open": false
+  },
+  "metadata": {
+    "operator_id": "OP-77",
+    "shift": "night"
+  }
+}
