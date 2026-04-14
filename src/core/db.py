@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import secrets
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +14,16 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _hash_api_key(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+
+
+def _api_key_preview(api_key_hash: str) -> str:
+    if not api_key_hash:
+        return "hidden"
+    return f"{api_key_hash[:8]}..."
 
 
 def init_db():
@@ -38,13 +49,11 @@ def init_db():
         )
     """)
 
-    # indice per sorting temporale
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_cases_created_at
         ON cases(created_at)
     """)
 
-    # indice per filtro client
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_cases_client_id
         ON cases(client_id)
@@ -62,7 +71,6 @@ def init_db():
         )
     """)
 
-    # indice per ricerca client
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_api_keys_client_id
         ON api_keys(client_id)
@@ -76,11 +84,13 @@ def insert_api_key(api_key: str, client_id: str):
     conn = get_connection()
     cursor = conn.cursor()
 
+    api_key_hash = _hash_api_key(api_key)
+
     cursor.execute("""
         INSERT OR IGNORE INTO api_keys (api_key, client_id, created_at)
         VALUES (?, ?, ?)
     """, (
-        api_key,
+        api_key_hash,
         client_id,
         datetime.now(timezone.utc).isoformat()
     ))
@@ -93,12 +103,14 @@ def get_client_by_api_key(api_key: str):
     conn = get_connection()
     cursor = conn.cursor()
 
+    api_key_hash = _hash_api_key(api_key)
+
     cursor.execute("""
         SELECT client_id
         FROM api_keys
         WHERE api_key = ?
         LIMIT 1
-    """, (api_key,))
+    """, (api_key_hash,))
 
     row = cursor.fetchone()
     conn.close()
@@ -119,17 +131,27 @@ def list_api_keys():
     rows = cursor.fetchall()
     conn.close()
 
-    return [dict(row) for row in rows]
+    return [
+        {
+            "id": row["id"],
+            "api_key_preview": _api_key_preview(row["api_key"]),
+            "client_id": row["client_id"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
 
 
 def revoke_api_key(api_key: str):
     conn = get_connection()
     cursor = conn.cursor()
 
+    api_key_hash = _hash_api_key(api_key)
+
     cursor.execute("""
         DELETE FROM api_keys
         WHERE api_key = ?
-    """, (api_key,))
+    """, (api_key_hash,))
 
     affected = cursor.rowcount
     conn.commit()
@@ -142,12 +164,14 @@ def rotate_api_key(old_api_key: str):
     conn = get_connection()
     cursor = conn.cursor()
 
+    old_api_key_hash = _hash_api_key(old_api_key)
+
     cursor.execute("""
         SELECT client_id
         FROM api_keys
         WHERE api_key = ?
         LIMIT 1
-    """, (old_api_key,))
+    """, (old_api_key_hash,))
 
     row = cursor.fetchone()
 
@@ -157,17 +181,18 @@ def rotate_api_key(old_api_key: str):
 
     client_id = row["client_id"]
     new_api_key = f"key_{secrets.token_hex(16)}"
+    new_api_key_hash = _hash_api_key(new_api_key)
 
     cursor.execute("""
         DELETE FROM api_keys
         WHERE api_key = ?
-    """, (old_api_key,))
+    """, (old_api_key_hash,))
 
     cursor.execute("""
         INSERT INTO api_keys (api_key, client_id, created_at)
         VALUES (?, ?, ?)
     """, (
-        new_api_key,
+        new_api_key_hash,
         client_id,
         datetime.now(timezone.utc).isoformat()
     ))
