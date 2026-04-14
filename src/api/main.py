@@ -15,6 +15,9 @@ from src.core.db import init_db, insert_case
 # auth
 from src.core.auth import get_client_from_api_key
 
+# payload adapter
+from src.core.payload_adapter import normalize_payload
+
 # routes
 from src.api.routes_cases import router as cases_router
 from src.api.routes_admin import router as admin_router
@@ -43,7 +46,8 @@ class ValidateRequest(BaseModel):
     @model_validator(mode="after")
     def validate_payload_for_module(self):
         if self.module == "pharma":
-            payload = self.payload or {}
+            raw_payload = self.payload or {}
+            payload = normalize_payload(raw_payload)
 
             required_fields = [
                 "product_id",
@@ -119,7 +123,9 @@ def validate(
 
     try:
         module_config = load_module_config(request.module)
-        payload = request.payload or {}
+
+        raw_payload = request.payload or {}
+        payload = normalize_payload(raw_payload)
 
         # run engine
         decision = run_module(
