@@ -17,6 +17,7 @@ from src.core.auth import get_client_from_api_key
 
 # routes
 from src.api.routes_cases import router as cases_router
+from src.api.routes_admin import router as admin_router
 
 ENGINE_NAME = "Aidentitech"
 
@@ -29,8 +30,9 @@ def startup_event():
     init_db()
 
 
-# endpoint /cases
+# endpoint routes
 app.include_router(cases_router)
+app.include_router(admin_router)
 
 
 class ValidateRequest(BaseModel):

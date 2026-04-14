@@ -1,5 +1,6 @@
 import sqlite3
 import json
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -103,6 +104,78 @@ def get_client_by_api_key(api_key: str):
     conn.close()
 
     return row["client_id"] if row else None
+
+
+def list_api_keys():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, api_key, client_id, created_at
+        FROM api_keys
+        ORDER BY id DESC
+    """)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def revoke_api_key(api_key: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        DELETE FROM api_keys
+        WHERE api_key = ?
+    """, (api_key,))
+
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    return affected > 0
+
+
+def rotate_api_key(old_api_key: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT client_id
+        FROM api_keys
+        WHERE api_key = ?
+        LIMIT 1
+    """, (old_api_key,))
+
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return None
+
+    client_id = row["client_id"]
+    new_api_key = f"key_{secrets.token_hex(16)}"
+
+    cursor.execute("""
+        DELETE FROM api_keys
+        WHERE api_key = ?
+    """, (old_api_key,))
+
+    cursor.execute("""
+        INSERT INTO api_keys (api_key, client_id, created_at)
+        VALUES (?, ?, ?)
+    """, (
+        new_api_key,
+        client_id,
+        datetime.now(timezone.utc).isoformat()
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return new_api_key
 
 
 def insert_case(data: dict):
