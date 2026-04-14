@@ -6,6 +6,7 @@ from src.core.payload_adapter import normalize_payload
 from src.modules.registry import AVAILABLE_MODULES
 from src.core.module_router import run_module
 from src.core.db import insert_case
+from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
 from core.ledger_chain import append_ledger_entry
 
 from datetime import datetime, timezone
@@ -132,6 +133,12 @@ def ingest_pharma(
             },
         }
 
+        # costruzione dossier logico + hash stabile
+        dossier_source = build_dossier_payload(response)
+        dossier_hash = compute_dossier_hash(dossier_source)
+
+        response["dossier_hash"] = dossier_hash
+
         insert_case({
             "decision_id": decision_id,
             "client_id": client_id,
@@ -142,6 +149,7 @@ def ingest_pharma(
             "decision_code": decision.get("decision_code"),
             "payload": payload,
             "full_response": response,
+            "dossier_hash": dossier_hash,
         })
 
         return response

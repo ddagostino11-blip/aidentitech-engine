@@ -34,6 +34,12 @@ def _looks_like_sha256(value: str) -> bool:
     )
 
 
+def _column_exists(cursor, table_name: str, column_name: str) -> bool:
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = cursor.fetchall()
+    return any(col["name"] == column_name for col in columns)
+
+
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
@@ -57,6 +63,13 @@ def init_db():
         )
     """)
 
+    # upgrade compatibile: aggiunge dossier_hash se manca
+    if not _column_exists(cursor, "cases", "dossier_hash"):
+        cursor.execute("""
+            ALTER TABLE cases
+            ADD COLUMN dossier_hash TEXT
+        """)
+
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_cases_created_at
         ON cases(created_at)
@@ -65,6 +78,11 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_cases_client_id
         ON cases(client_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cases_dossier_hash
+        ON cases(dossier_hash)
     """)
 
     # =========================
@@ -235,8 +253,6 @@ def migrate_plaintext_api_keys():
 
         hashed_value = _hash_api_key(raw_value)
 
-        # Se esiste già un record con stesso hash e stesso client,
-        # eliminiamo il legacy plaintext per evitare violazione UNIQUE.
         cursor.execute("""
             SELECT id
             FROM api_keys
@@ -288,9 +304,10 @@ def insert_case(data: dict):
             decision_code,
             payload,
             full_response,
+            dossier_hash,
             created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data.get("decision_id"),
         data.get("client_id"),
@@ -301,6 +318,7 @@ def insert_case(data: dict):
         data.get("decision_code"),
         json.dumps(data.get("payload")),
         json.dumps(data.get("full_response")),
+        data.get("dossier_hash"),
         datetime.now(timezone.utc).isoformat()
     ))
 
@@ -315,7 +333,7 @@ def get_cases(client_id: str | None = None, status: str | None = None, limit: in
     query = """
         SELECT id, decision_id, client_id, module,
                status, severity, risk_score,
-               decision_code, created_at
+               decision_code, dossier_hash, created_at
         FROM cases
     """
 
@@ -348,7 +366,7 @@ def get_case_by_decision_id(decision_id: str):
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT full_response
+        SELECT full_response, dossier_hash
         FROM cases
         WHERE decision_id = ?
         LIMIT 1
@@ -360,4 +378,6 @@ def get_case_by_decision_id(decision_id: str):
     if not row:
         return None
 
-    return json.loads(row["full_response"])
+    case = json.loads(row["full_response"])
+    case["dossier_hash"] = row["dossier_hash"]
+    return case
