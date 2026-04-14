@@ -31,6 +31,29 @@ def load_module_config(module_name: str):
         )
 
 
+def validate_module_payload(module_name: str, payload: dict | None):
+    try:
+        validator_module = importlib.import_module(
+            f"src.modules.{module_name}.validator"
+        )
+        validate_fn = getattr(validator_module, "validate_payload", None)
+
+        if callable(validate_fn):
+            validate_fn(payload)
+
+    except ModuleNotFoundError:
+        return
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Payload validation error for module {module_name}: {str(e)}"
+        )
+
+
 @router.post("/ingest/pharma")
 def ingest_pharma(
     request: IngestPharmaRequest,
@@ -55,9 +78,10 @@ def ingest_pharma(
         raw_payload = request.payload or {}
         payload = normalize_payload(raw_payload)
 
-        # =========================
-        # INTEGRATION CONTEXT
-        # =========================
+        # validazione delegata al modulo
+        validate_module_payload(module_name, payload)
+
+        # context di integrazione: generico, non di dominio
         context = raw_payload.get("context", {}) if isinstance(raw_payload, dict) else {}
 
         source_system = context.get("source_system", "unknown")
@@ -65,24 +89,6 @@ def ingest_pharma(
         line = context.get("line", None)
 
         ingestion_timestamp = datetime.now(timezone.utc).isoformat()
-
-        required_fields = [
-            "product_id",
-            "batch",
-            "gmp_compliant",
-            "temperature",
-        ]
-
-        missing_fields = [
-            field for field in required_fields
-            if field not in payload or payload.get(field) is None
-        ]
-
-        if missing_fields:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Missing required payload fields for pharma: {', '.join(missing_fields)}"
-            )
 
         decision = run_module(
             module_name,
@@ -133,7 +139,6 @@ def ingest_pharma(
             },
         }
 
-        # costruzione dossier logico + hash stabile
         dossier_source = build_dossier_payload(response)
         dossier_hash = compute_dossier_hash(dossier_source)
 

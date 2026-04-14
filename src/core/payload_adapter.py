@@ -1,23 +1,29 @@
-def normalize_payload(input_payload: dict) -> dict:
+def normalize_payload(payload: dict | None) -> dict:
     """
-    Converte payload enterprise → payload engine interno
+    Normalizzazione generica del payload.
+
+    Regole:
+    - se il payload è già flat, lo restituisce così com'è
+    - se il payload usa struttura enterprise con `entity` e `data`,
+      fa merge generico dei blocchi
+    - nessuna logica di dominio nel core
     """
+    if not isinstance(payload, dict):
+        return {}
 
-    # fallback compatibilità (se già formato vecchio)
-    if "product_id" in input_payload:
-        return input_payload
+    entity = payload.get("entity")
+    data = payload.get("data")
 
-    data = input_payload.get("data", {})
-    context = input_payload.get("context", {})
-    entity = input_payload.get("entity", {})
+    # Caso 1: payload già flat / già normalizzato
+    if not isinstance(entity, dict) and not isinstance(data, dict):
+        return payload
 
-    return {
-        "product_id": entity.get("product_id"),
-        "batch": entity.get("batch"),
-        "gmp_compliant": data.get("gmp_compliant"),
-        "temperature": data.get("temperature"),
-        "batch_record_reviewed": data.get("batch_record_reviewed"),
-        "deviation_open": data.get("deviation_open"),
-        "capa_open": data.get("capa_open"),
-        # puoi estendere qui senza rompere il core
-    }
+    normalized = {}
+
+    if isinstance(entity, dict):
+        normalized.update(entity)
+
+    if isinstance(data, dict):
+        normalized.update(data)
+
+    return normalized

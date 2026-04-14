@@ -40,37 +40,6 @@ app.include_router(admin_router)
 app.include_router(ingest_router)
 
 
-class ValidateRequest(BaseModel):
-    module: str
-    payload: dict | None = None
-    client_id: str | None = "anonymous"
-
-    @model_validator(mode="after")
-    def validate_payload_for_module(self):
-        if self.module == "pharma":
-            raw_payload = self.payload or {}
-            payload = normalize_payload(raw_payload)
-
-            required_fields = [
-                "product_id",
-                "batch",
-                "gmp_compliant",
-                "temperature",
-            ]
-
-            missing_fields = [
-                field for field in required_fields
-                if field not in payload or payload.get(field) is None
-            ]
-
-            if missing_fields:
-                raise ValueError(
-                    f"Missing required payload fields for pharma: {', '.join(missing_fields)}"
-                )
-
-        return self
-
-
 def load_module_config(module_name: str):
     try:
         module = importlib.import_module(f"src.modules.{module_name}.config")
@@ -80,6 +49,47 @@ def load_module_config(module_name: str):
             status_code=400,
             detail=f"Modulo non valido: {module_name}"
         )
+
+
+def validate_module_payload(module_name: str, payload: dict | None):
+    try:
+        validator_module = importlib.import_module(
+            f"src.modules.{module_name}.validator"
+        )
+        validate_fn = getattr(validator_module, "validate_payload", None)
+
+        if callable(validate_fn):
+            validate_fn(payload)
+
+    except ModuleNotFoundError:
+        return
+    except ValueError:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Payload validation error for module {module_name}: {str(e)}"
+        )
+
+
+class ValidateRequest(BaseModel):
+    module: str
+    payload: dict | None = None
+    client_id: str | None = "anonymous"
+
+    @model_validator(mode="after")
+    def validate_payload_for_module(self):
+        raw_payload = self.payload or {}
+        payload = normalize_payload(raw_payload)
+
+        try:
+            validate_module_payload(self.module, payload)
+        except HTTPException:
+            raise
+        except ValueError as e:
+            raise ValueError(str(e))
+
+        return self
 
 
 @app.get("/")
@@ -128,6 +138,8 @@ def validate(
 
         raw_payload = request.payload or {}
         payload = normalize_payload(raw_payload)
+
+        validate_module_payload(request.module, payload)
 
         # run engine
         decision = run_module(
@@ -183,12 +195,19 @@ def validate(
             "decision_code": decision.get("decision_code"),
             "payload": payload,
             "full_response": response,
+            "dossier_hash": response.get("dossier_hash"),
         })
 
         return response
 
     except HTTPException:
         raise
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
     except Exception as e:
         raise HTTPException(
