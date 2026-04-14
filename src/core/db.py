@@ -604,18 +604,61 @@ def get_case_by_decision_id(decision_id: str):
     return case
 
 
+def get_latest_review_by_decision_id(decision_id: str):
+    conn = get_connection()
+
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("""
+            SELECT id, decision_id, client_id, reviewer_id,
+                   action, reason, created_at
+            FROM review_actions
+            WHERE decision_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+        """, (decision_id,))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, decision_id, client_id, reviewer_id,
+                   action, reason, created_at
+            FROM review_actions
+            WHERE decision_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        """, (decision_id,))
+
+    row = _fetchone_dict(cursor)
+    conn.close()
+
+    if not row:
+        return None
+
+    row["created_at"] = str(row["created_at"])
+    return row
+
+
 def _build_case_summary(row: dict) -> dict:
     if _is_postgres():
         full_response = row["full_response"]
     else:
         full_response = json.loads(row["full_response"])
 
+    latest_review = get_latest_review_by_decision_id(full_response.get("decision_id"))
+
+    engine_status = full_response.get("status")
+    final_status = latest_review["action"] if latest_review else engine_status
+    review_state = "REVIEWED" if latest_review else "PENDING"
+
     return {
         "id": row["id"],
         "decision_id": full_response.get("decision_id"),
         "client_id": full_response.get("client_id"),
         "module": full_response.get("module"),
-        "status": full_response.get("status"),
+        "status": final_status,
+        "engine_status": engine_status,
+        "final_status": final_status,
+        "review_state": review_state,
         "severity": full_response.get("severity"),
         "risk_score": full_response.get("risk_score"),
         "decision_code": full_response.get("decision_code"),
@@ -727,6 +770,7 @@ def insert_review_action(
 
     conn.commit()
     conn.close()
+
 
 def get_reviews_by_decision_id(decision_id: str):
     conn = get_connection()
