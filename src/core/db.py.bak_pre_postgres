@@ -35,6 +35,10 @@ def get_connection():
 
 def _fetchall_dicts(cursor):
     rows = cursor.fetchall()
+
+    if _is_postgres():
+        return [dict(row) for row in rows]
+
     return [dict(row) for row in rows]
 
 
@@ -43,6 +47,9 @@ def _fetchone_dict(cursor):
 
     if not row:
         return None
+
+    if _is_postgres():
+        return dict(row)
 
     return dict(row)
 

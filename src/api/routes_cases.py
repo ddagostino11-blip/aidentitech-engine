@@ -4,6 +4,7 @@ from src.core.db import get_connection, get_case_by_decision_id
 from src.core.auth import get_client_from_api_key
 from src.core.pdf_generator import generate_dossier_pdf
 from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
+import psycopg2.extras
 import csv
 import io
 
@@ -15,6 +16,16 @@ def _client_from_key(x_api_key: str | None) -> str:
         return get_client_from_api_key(x_api_key)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+def _is_postgres_connection(conn) -> bool:
+    return conn.__class__.__module__.startswith("psycopg2")
+
+
+def _get_cursor(conn):
+    if _is_postgres_connection(conn):
+        return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    return conn.cursor()
 
 
 def _load_authorized_case(decision_id: str, x_api_key: str | None):
@@ -41,9 +52,11 @@ def get_cases_stats(
     client_id = _client_from_key(x_api_key)
 
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = _get_cursor(conn)
+    is_postgres = _is_postgres_connection(conn)
 
-    base_query = "FROM cases WHERE client_id = ?"
+    placeholder = "%s" if is_postgres else "?"
+    base_query = f"FROM cases WHERE client_id = {placeholder}"
     params = [client_id]
 
     cursor.execute(
@@ -66,9 +79,11 @@ def get_cases_stats(
 
     conn.close()
 
+    total_cases = total_row["total"] if total_row else 0
+
     return {
         "client_id": client_id,
-        "total_cases": total_row["total"] if total_row else 0,
+        "total_cases": total_cases,
         "by_status": {row["status"]: row["count"] for row in status_rows},
         "by_severity": {row["severity"]: row["count"] for row in severity_rows},
     }
@@ -89,7 +104,10 @@ def export_cases(
     client_id = _client_from_key(x_api_key)
 
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = _get_cursor(conn)
+    is_postgres = _is_postgres_connection(conn)
+
+    placeholder = "%s" if is_postgres else "?"
 
     query = """
         SELECT decision_id, client_id, module,
@@ -98,27 +116,27 @@ def export_cases(
         FROM cases
     """
 
-    conditions = ["client_id = ?"]
+    conditions = [f"client_id = {placeholder}"]
     params = [client_id]
 
     if status:
-        conditions.append("status = ?")
+        conditions.append(f"status = {placeholder}")
         params.append(status)
 
     if severity:
-        conditions.append("severity = ?")
+        conditions.append(f"severity = {placeholder}")
         params.append(severity)
 
     if date_from:
-        conditions.append("created_at >= ?")
+        conditions.append(f"created_at >= {placeholder}")
         params.append(date_from)
 
     if date_to:
-        conditions.append("created_at <= ?")
+        conditions.append(f"created_at <= {placeholder}")
         params.append(date_to)
 
     query += " WHERE " + " AND ".join(conditions)
-    query += " ORDER BY id DESC LIMIT ?"
+    query += f" ORDER BY id DESC LIMIT {placeholder}"
     params.append(limit)
 
     cursor.execute(query, tuple(params))
@@ -175,7 +193,10 @@ def get_cases(
     client_id = _client_from_key(x_api_key)
 
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = _get_cursor(conn)
+    is_postgres = _is_postgres_connection(conn)
+
+    placeholder = "%s" if is_postgres else "?"
 
     query = """
         SELECT id, decision_id, client_id, module,
@@ -184,34 +205,40 @@ def get_cases(
         FROM cases
     """
 
-    conditions = ["client_id = ?"]
+    conditions = [f"client_id = {placeholder}"]
     params = [client_id]
 
     if status:
-        conditions.append("status = ?")
+        conditions.append(f"status = {placeholder}")
         params.append(status)
 
     if severity:
-        conditions.append("severity = ?")
+        conditions.append(f"severity = {placeholder}")
         params.append(severity)
 
     if date_from:
-        conditions.append("created_at >= ?")
+        conditions.append(f"created_at >= {placeholder}")
         params.append(date_from)
 
     if date_to:
-        conditions.append("created_at <= ?")
+        conditions.append(f"created_at <= {placeholder}")
         params.append(date_to)
 
     query += " WHERE " + " AND ".join(conditions)
-    query += " ORDER BY id DESC LIMIT ?"
+    query += f" ORDER BY id DESC LIMIT {placeholder}"
     params.append(limit)
 
     cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
     conn.close()
 
-    return [dict(row) for row in rows]
+    result = [dict(row) for row in rows]
+
+    for row in result:
+        if "created_at" in row:
+            row["created_at"] = str(row["created_at"])
+
+    return result
 
 
 # =========================
