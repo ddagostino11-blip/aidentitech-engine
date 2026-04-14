@@ -3,6 +3,76 @@ from src.core.explainer import build_explanation
 from src.modules.pharma.policy import apply_policy
 
 
+REGULATORY_IMPACT_MAP = {
+    "LOW": "LOW",
+    "MEDIUM": "MEDIUM",
+    "HIGH": "HIGH",
+    "CRITICAL": "HIGH",
+}
+
+
+DECISION_PRESETS = {
+    "approved": {
+        "status": "APPROVED",
+        "recommended_action": "RELEASE_BATCH",
+        "decision_code": "PHARMA_APPROVED",
+        "review_required": False,
+        "batch_disposition": "RELEASED",
+    },
+    "medium_review": {
+        "status": "REVIEW",
+        "recommended_action": "QUALITY_REVIEW",
+        "decision_code": "PHARMA_WARNING",
+        "review_required": True,
+        "batch_disposition": "ON_HOLD",
+    },
+    "medium_high_risk_review": {
+        "status": "REVIEW",
+        "recommended_action": "QUALITY_REVIEW",
+        "decision_code": "PHARMA_HIGH_RISK_REVIEW",
+        "review_required": True,
+        "batch_disposition": "QUARANTINED",
+    },
+    "medium_multi_warning": {
+        "status": "REVIEW",
+        "recommended_action": "QUALITY_REVIEW",
+        "decision_code": "PHARMA_MULTI_WARNING",
+        "review_required": True,
+        "batch_disposition": "QUARANTINED",
+    },
+    "high_reject": {
+        "status": "REJECTED",
+        "recommended_action": "HOLD_BATCH",
+        "decision_code": "PHARMA_HIGH_RISK_REJECT",
+        "review_required": True,
+        "batch_disposition": "QUARANTINED",
+    },
+    "critical_reject": {
+        "status": "CRITICAL",
+        "recommended_action": "BLOCK_AND_ESCALATE",
+        "decision_code": "PHARMA_CRITICAL_REJECT",
+        "review_required": True,
+        "batch_disposition": "BLOCKED",
+    },
+    "review_required_fallback": {
+        "status": "REVIEW",
+        "recommended_action": "QUALITY_REVIEW",
+        "decision_code": "PHARMA_REVIEW_REQUIRED",
+        "review_required": True,
+        "batch_disposition": "ON_HOLD",
+    },
+}
+
+
+def _regulatory_impact_from_severity(severity: str) -> str:
+    return REGULATORY_IMPACT_MAP.get(severity, "LOW")
+
+
+def _apply_preset(result: dict, preset_name: str):
+    preset = DECISION_PRESETS[preset_name]
+    result.update(preset)
+
+
 def _normalize_pharma_rules(module_config: dict) -> list:
     rules = module_config.get("rules", {})
     normalized_rules = []
@@ -49,16 +119,6 @@ def _normalize_pharma_rules(module_config: dict) -> list:
     return normalized_rules
 
 
-def _regulatory_impact_from_severity(severity: str) -> str:
-    mapping = {
-        "LOW": "LOW",
-        "MEDIUM": "MEDIUM",
-        "HIGH": "HIGH",
-        "CRITICAL": "HIGH",
-    }
-    return mapping.get(severity, "LOW")
-
-
 def _normalize_issue(issue: dict, action_map: dict) -> dict:
     raw_action = issue.get("recommended_action", "RELEASE_BATCH")
 
@@ -84,34 +144,55 @@ def _normalize_issue(issue: dict, action_map: dict) -> dict:
     }
 
 
-def _apply_decision_guardrails(result: dict, max_severity: str) -> dict:
+def _build_base_result(engine_result: dict, compliance_scope: dict) -> dict:
+    result = {
+        "status": "APPROVED",
+        "risk_score": engine_result.get("risk_score", 0),
+        "issues": engine_result.get("issues", []),
+        "primary_issue": engine_result.get("primary_issue"),
+        "audit": engine_result.get("audit", []),
+        "severity": engine_result.get("severity", "LOW"),
+        "recommended_action": "RELEASE_BATCH",
+        "compliance_scope": compliance_scope,
+        "review_required": False,
+        "blocking_issues_count": 0,
+        "decision_code": "PHARMA_APPROVED",
+        "regulatory_impact": "LOW",
+        "batch_disposition": "RELEASED",
+    }
+    return result
+
+
+def _apply_severity_outcome(result: dict):
+    max_severity = result.get("severity", "LOW")
+    medium_issues = [
+        issue for issue in result.get("issues", [])
+        if issue.get("severity") == "MEDIUM"
+    ]
+
+    if max_severity == "CRITICAL":
+        _apply_preset(result, "critical_reject")
+        return
+
     if max_severity == "HIGH":
-        result["status"] = "REJECTED"
-        result["recommended_action"] = "HOLD_BATCH"
-        result["decision_code"] = "PHARMA_HIGH_RISK_REJECT"
-        result["review_required"] = True
-        result["batch_disposition"] = "QUARANTINED"
-        result["regulatory_impact"] = _regulatory_impact_from_severity(max_severity)
+        _apply_preset(result, "high_reject")
+        return
 
-    elif max_severity == "CRITICAL":
-        result["status"] = "CRITICAL"
-        result["recommended_action"] = "BLOCK_AND_ESCALATE"
-        result["decision_code"] = "PHARMA_CRITICAL_REJECT"
-        result["review_required"] = True
-        result["batch_disposition"] = "BLOCKED"
-        result["regulatory_impact"] = _regulatory_impact_from_severity(max_severity)
+    if max_severity == "MEDIUM":
+        if result.get("risk_score", 0) >= 75:
+            _apply_preset(result, "medium_high_risk_review")
+        elif len(medium_issues) >= 2:
+            _apply_preset(result, "medium_multi_warning")
+        else:
+            _apply_preset(result, "medium_review")
+        return
 
+    _apply_preset(result, "approved")
+
+
+def _apply_decision_guardrails(result: dict, max_severity: str) -> dict:
     if result.get("status") == "APPROVED" and max_severity in {"MEDIUM", "HIGH", "CRITICAL"}:
-        result["status"] = "REVIEW"
-        result["recommended_action"] = "QUALITY_REVIEW"
-        result["review_required"] = True
-
-        if not result.get("decision_code"):
-            result["decision_code"] = "PHARMA_REVIEW_REQUIRED"
-
-        if not result.get("batch_disposition"):
-            result["batch_disposition"] = "ON_HOLD"
-
+        _apply_preset(result, "review_required_fallback")
         result["regulatory_impact"] = _regulatory_impact_from_severity(max_severity)
 
     return result
@@ -137,21 +218,9 @@ def run(module_config: dict, payload: dict):
         else None
     )
 
-    result = {
-        "status": "APPROVED",
-        "risk_score": engine_result.get("risk_score", 0),
-        "issues": normalized_issues,
-        "primary_issue": primary_issue,
-        "audit": engine_result.get("audit", []),
-        "severity": engine_result.get("severity", "LOW"),
-        "recommended_action": "RELEASE_BATCH",
-        "compliance_scope": compliance_scope,
-        "review_required": False,
-        "blocking_issues_count": 0,
-        "decision_code": "PHARMA_APPROVED",
-        "regulatory_impact": "LOW",
-        "batch_disposition": "RELEASED",
-    }
+    result = _build_base_result(engine_result, compliance_scope)
+    result["issues"] = normalized_issues
+    result["primary_issue"] = primary_issue
 
     max_severity = result["severity"]
 
@@ -159,48 +228,10 @@ def run(module_config: dict, payload: dict):
         issue for issue in result["issues"]
         if issue.get("severity") in {"HIGH", "CRITICAL"}
     ]
-    medium_issues = [
-        issue for issue in result["issues"]
-        if issue.get("severity") == "MEDIUM"
-    ]
-
     result["blocking_issues_count"] = len(blocking_issues)
     result["regulatory_impact"] = _regulatory_impact_from_severity(max_severity)
 
-    if max_severity == "CRITICAL":
-        result["status"] = "CRITICAL"
-        result["recommended_action"] = "BLOCK_AND_ESCALATE"
-        result["decision_code"] = "PHARMA_CRITICAL_REJECT"
-        result["review_required"] = True
-        result["batch_disposition"] = "BLOCKED"
-
-    elif max_severity == "HIGH":
-        result["status"] = "REJECTED"
-        result["recommended_action"] = "HOLD_BATCH"
-        result["decision_code"] = "PHARMA_HIGH_RISK_REJECT"
-        result["review_required"] = True
-        result["batch_disposition"] = "QUARANTINED"
-
-    elif max_severity == "MEDIUM":
-        result["status"] = "REVIEW"
-        result["recommended_action"] = "QUALITY_REVIEW"
-        result["review_required"] = True
-        result["decision_code"] = "PHARMA_WARNING"
-        result["batch_disposition"] = "ON_HOLD"
-
-        if result["risk_score"] >= 75:
-            result["decision_code"] = "PHARMA_HIGH_RISK_REVIEW"
-            result["batch_disposition"] = "QUARANTINED"
-        elif len(medium_issues) >= 2:
-            result["decision_code"] = "PHARMA_MULTI_WARNING"
-            result["batch_disposition"] = "QUARANTINED"
-
-    else:
-        result["status"] = "APPROVED"
-        result["recommended_action"] = "RELEASE_BATCH"
-        result["decision_code"] = "PHARMA_APPROVED"
-        result["review_required"] = False
-        result["batch_disposition"] = "RELEASED"
+    _apply_severity_outcome(result)
 
     if primary_issue and max_severity in {"HIGH", "CRITICAL"}:
         result["recommended_action"] = primary_issue.get(

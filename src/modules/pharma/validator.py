@@ -15,5 +15,5 @@ def validate_payload(payload: dict | None):
 
     if missing_fields:
         raise ValueError(
-            f"Missing required payload fields for pharma: {', '.join(missing_fields)}"
+            f"Missing required payload fields: {', '.join(missing_fields)}"
         )
