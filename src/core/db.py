@@ -26,6 +26,14 @@ def _api_key_preview(api_key_hash: str) -> str:
     return f"{api_key_hash[:8]}..."
 
 
+def _looks_like_sha256(value: str) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(c in "0123456789abcdef" for c in value.lower())
+    )
+
+
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
@@ -201,6 +209,68 @@ def rotate_api_key(old_api_key: str):
     conn.close()
 
     return new_api_key
+
+
+def migrate_plaintext_api_keys():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, api_key, client_id
+        FROM api_keys
+        ORDER BY id ASC
+    """)
+
+    rows = cursor.fetchall()
+    migrated = 0
+    deleted_duplicates = 0
+
+    for row in rows:
+        key_id = row["id"]
+        raw_value = row["api_key"]
+        client_id = row["client_id"]
+
+        if _looks_like_sha256(raw_value):
+            continue
+
+        hashed_value = _hash_api_key(raw_value)
+
+        # Se esiste già un record con stesso hash e stesso client,
+        # eliminiamo il legacy plaintext per evitare violazione UNIQUE.
+        cursor.execute("""
+            SELECT id
+            FROM api_keys
+            WHERE api_key = ?
+              AND client_id = ?
+              AND id != ?
+            LIMIT 1
+        """, (hashed_value, client_id, key_id))
+
+        existing = cursor.fetchone()
+
+        if existing:
+            cursor.execute("""
+                DELETE FROM api_keys
+                WHERE id = ?
+            """, (key_id,))
+            deleted_duplicates += 1
+            continue
+
+        cursor.execute("""
+            UPDATE api_keys
+            SET api_key = ?
+            WHERE id = ?
+        """, (hashed_value, key_id))
+
+        migrated += 1
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "migrated": migrated,
+        "deleted_duplicates": deleted_duplicates,
+    }
 
 
 def insert_case(data: dict):
