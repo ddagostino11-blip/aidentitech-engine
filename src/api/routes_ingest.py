@@ -54,6 +54,17 @@ def ingest_pharma(
         raw_payload = request.payload or {}
         payload = normalize_payload(raw_payload)
 
+        # =========================
+        # INTEGRATION CONTEXT
+        # =========================
+        context = raw_payload.get("context", {}) if isinstance(raw_payload, dict) else {}
+
+        source_system = context.get("source_system", "unknown")
+        site = context.get("site", "unknown")
+        line = context.get("line", None)
+
+        ingestion_timestamp = datetime.now(timezone.utc).isoformat()
+
         required_fields = [
             "product_id",
             "batch",
@@ -113,6 +124,12 @@ def ingest_pharma(
             "ledger_hash": ledger_entry.get("hash"),
             "payload_received": raw_payload,
             "normalized_payload": payload,
+            "integration": {
+                "source_system": source_system,
+                "site": site,
+                "line": line,
+                "ingestion_timestamp": ingestion_timestamp
+            },
         }
 
         insert_case({
