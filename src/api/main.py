@@ -21,6 +21,7 @@ from src.core.payload_adapter import normalize_payload
 # routes
 from src.api.routes_cases import router as cases_router
 from src.api.routes_admin import router as admin_router
+from src.api.routes_ingest import router as ingest_router
 
 ENGINE_NAME = "Aidentitech"
 
@@ -36,6 +37,7 @@ def startup_event():
 # endpoint routes
 app.include_router(cases_router)
 app.include_router(admin_router)
+app.include_router(ingest_router)
 
 
 class ValidateRequest(BaseModel):
