@@ -727,3 +727,33 @@ def insert_review_action(
 
     conn.commit()
     conn.close()
+
+def get_reviews_by_decision_id(decision_id: str):
+    conn = get_connection()
+
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("""
+            SELECT id, decision_id, client_id, reviewer_id,
+                   action, reason, created_at
+            FROM review_actions
+            WHERE decision_id = %s
+            ORDER BY id DESC
+        """, (decision_id,))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, decision_id, client_id, reviewer_id,
+                   action, reason, created_at
+            FROM review_actions
+            WHERE decision_id = ?
+            ORDER BY id DESC
+        """, (decision_id,))
+
+    rows = _fetchall_dicts(cursor)
+    conn.close()
+
+    for row in rows:
+        row["created_at"] = str(row["created_at"])
+
+    return rows
