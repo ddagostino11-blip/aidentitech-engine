@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import json
 import secrets
@@ -5,15 +6,52 @@ import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
+import psycopg2
+import psycopg2.extras
+from psycopg2.extras import Json
 
-DB_PATH = "runtime/cases.db"
+
+SQLITE_DB_PATH = "runtime/cases.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _is_postgres() -> bool:
+    return bool(DATABASE_URL and DATABASE_URL.startswith("postgresql"))
 
 
 def get_connection():
+    if _is_postgres():
+        return psycopg2.connect(DATABASE_URL)
+
     Path("runtime").mkdir(exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(SQLITE_DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _fetchall_dicts(cursor):
+    rows = cursor.fetchall()
+
+    if _is_postgres():
+        return [dict(row) for row in rows]
+
+    return [dict(row) for row in rows]
+
+
+def _fetchone_dict(cursor):
+    row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    if _is_postgres():
+        return dict(row)
+
+    return dict(row)
 
 
 def _hash_api_key(api_key: str) -> str:
@@ -34,7 +72,7 @@ def _looks_like_sha256(value: str) -> bool:
     )
 
 
-def _column_exists(cursor, table_name: str, column_name: str) -> bool:
+def _column_exists_sqlite(cursor, table_name: str, column_name: str) -> bool:
     cursor.execute(f"PRAGMA table_info({table_name})")
     columns = cursor.fetchall()
     return any(col["name"] == column_name for col in columns)
@@ -42,11 +80,62 @@ def _column_exists(cursor, table_name: str, column_name: str) -> bool:
 
 def init_db():
     conn = get_connection()
+
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cases (
+                id SERIAL PRIMARY KEY,
+                decision_id TEXT UNIQUE,
+                client_id TEXT,
+                module TEXT,
+                status TEXT,
+                severity TEXT,
+                risk_score INTEGER,
+                decision_code TEXT,
+                payload JSONB,
+                full_response JSONB,
+                dossier_hash TEXT,
+                created_at TIMESTAMPTZ
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_cases_created_at
+            ON cases(created_at)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_cases_client_id
+            ON cases(client_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_cases_dossier_hash
+            ON cases(dossier_hash)
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id SERIAL PRIMARY KEY,
+                api_key TEXT UNIQUE,
+                client_id TEXT,
+                created_at TIMESTAMPTZ
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_api_keys_client_id
+            ON api_keys(client_id)
+        """)
+
+        conn.commit()
+        conn.close()
+        return
+
     cursor = conn.cursor()
 
-    # =========================
-    # CASES TABLE
-    # =========================
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,8 +152,7 @@ def init_db():
         )
     """)
 
-    # upgrade compatibile: aggiunge dossier_hash se manca
-    if not _column_exists(cursor, "cases", "dossier_hash"):
+    if not _column_exists_sqlite(cursor, "cases", "dossier_hash"):
         cursor.execute("""
             ALTER TABLE cases
             ADD COLUMN dossier_hash TEXT
@@ -85,9 +173,6 @@ def init_db():
         ON cases(dossier_hash)
     """)
 
-    # =========================
-    # API KEYS TABLE
-    # =========================
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS api_keys (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,18 +193,22 @@ def init_db():
 
 def insert_api_key(api_key: str, client_id: str):
     conn = get_connection()
-    cursor = conn.cursor()
-
     api_key_hash = _hash_api_key(api_key)
+    created_at = _utc_now_iso()
 
-    cursor.execute("""
-        INSERT OR IGNORE INTO api_keys (api_key, client_id, created_at)
-        VALUES (?, ?, ?)
-    """, (
-        api_key_hash,
-        client_id,
-        datetime.now(timezone.utc).isoformat()
-    ))
+    if _is_postgres():
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO api_keys (api_key, client_id, created_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (api_key) DO NOTHING
+        """, (api_key_hash, client_id, created_at))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO api_keys (api_key, client_id, created_at)
+            VALUES (?, ?, ?)
+        """, (api_key_hash, client_id, created_at))
 
     conn.commit()
     conn.close()
@@ -127,18 +216,25 @@ def insert_api_key(api_key: str, client_id: str):
 
 def get_client_by_api_key(api_key: str):
     conn = get_connection()
-    cursor = conn.cursor()
 
-    api_key_hash = _hash_api_key(api_key)
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("""
+            SELECT client_id
+            FROM api_keys
+            WHERE api_key = %s
+            LIMIT 1
+        """, (_hash_api_key(api_key),))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT client_id
+            FROM api_keys
+            WHERE api_key = ?
+            LIMIT 1
+        """, (_hash_api_key(api_key),))
 
-    cursor.execute("""
-        SELECT client_id
-        FROM api_keys
-        WHERE api_key = ?
-        LIMIT 1
-    """, (api_key_hash,))
-
-    row = cursor.fetchone()
+    row = _fetchone_dict(cursor)
     conn.close()
 
     return row["client_id"] if row else None
@@ -146,7 +242,11 @@ def get_client_by_api_key(api_key: str):
 
 def list_api_keys():
     conn = get_connection()
-    cursor = conn.cursor()
+
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    else:
+        cursor = conn.cursor()
 
     cursor.execute("""
         SELECT id, api_key, client_id, created_at
@@ -154,7 +254,7 @@ def list_api_keys():
         ORDER BY id DESC
     """)
 
-    rows = cursor.fetchall()
+    rows = _fetchall_dicts(cursor)
     conn.close()
 
     return [
@@ -162,7 +262,7 @@ def list_api_keys():
             "id": row["id"],
             "api_key_preview": _api_key_preview(row["api_key"]),
             "client_id": row["client_id"],
-            "created_at": row["created_at"],
+            "created_at": str(row["created_at"]),
         }
         for row in rows
     ]
@@ -170,14 +270,20 @@ def list_api_keys():
 
 def revoke_api_key(api_key: str):
     conn = get_connection()
-    cursor = conn.cursor()
-
     api_key_hash = _hash_api_key(api_key)
 
-    cursor.execute("""
-        DELETE FROM api_keys
-        WHERE api_key = ?
-    """, (api_key_hash,))
+    if _is_postgres():
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM api_keys
+            WHERE api_key = %s
+        """, (api_key_hash,))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM api_keys
+            WHERE api_key = ?
+        """, (api_key_hash,))
 
     affected = cursor.rowcount
     conn.commit()
@@ -188,18 +294,26 @@ def revoke_api_key(api_key: str):
 
 def rotate_api_key(old_api_key: str):
     conn = get_connection()
-    cursor = conn.cursor()
-
     old_api_key_hash = _hash_api_key(old_api_key)
 
-    cursor.execute("""
-        SELECT client_id
-        FROM api_keys
-        WHERE api_key = ?
-        LIMIT 1
-    """, (old_api_key_hash,))
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("""
+            SELECT client_id
+            FROM api_keys
+            WHERE api_key = %s
+            LIMIT 1
+        """, (old_api_key_hash,))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT client_id
+            FROM api_keys
+            WHERE api_key = ?
+            LIMIT 1
+        """, (old_api_key_hash,))
 
-    row = cursor.fetchone()
+    row = _fetchone_dict(cursor)
 
     if not row:
         conn.close()
@@ -208,20 +322,28 @@ def rotate_api_key(old_api_key: str):
     client_id = row["client_id"]
     new_api_key = f"key_{secrets.token_hex(16)}"
     new_api_key_hash = _hash_api_key(new_api_key)
+    created_at = _utc_now_iso()
 
-    cursor.execute("""
-        DELETE FROM api_keys
-        WHERE api_key = ?
-    """, (old_api_key_hash,))
-
-    cursor.execute("""
-        INSERT INTO api_keys (api_key, client_id, created_at)
-        VALUES (?, ?, ?)
-    """, (
-        new_api_key_hash,
-        client_id,
-        datetime.now(timezone.utc).isoformat()
-    ))
+    if _is_postgres():
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM api_keys
+            WHERE api_key = %s
+        """, (old_api_key_hash,))
+        cursor.execute("""
+            INSERT INTO api_keys (api_key, client_id, created_at)
+            VALUES (%s, %s, %s)
+        """, (new_api_key_hash, client_id, created_at))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM api_keys
+            WHERE api_key = ?
+        """, (old_api_key_hash,))
+        cursor.execute("""
+            INSERT INTO api_keys (api_key, client_id, created_at)
+            VALUES (?, ?, ?)
+        """, (new_api_key_hash, client_id, created_at))
 
     conn.commit()
     conn.close()
@@ -230,6 +352,9 @@ def rotate_api_key(old_api_key: str):
 
 
 def migrate_plaintext_api_keys():
+    if _is_postgres():
+        return {"migrated": 0, "deleted_duplicates": 0}
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -291,36 +416,68 @@ def migrate_plaintext_api_keys():
 
 def insert_case(data: dict):
     conn = get_connection()
-    cursor = conn.cursor()
+    created_at = _utc_now_iso()
 
-    cursor.execute("""
-        INSERT INTO cases (
-            decision_id,
-            client_id,
-            module,
-            status,
-            severity,
-            risk_score,
-            decision_code,
-            payload,
-            full_response,
-            dossier_hash,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        data.get("decision_id"),
-        data.get("client_id"),
-        data.get("module"),
-        data.get("status"),
-        data.get("severity"),
-        data.get("risk_score"),
-        data.get("decision_code"),
-        json.dumps(data.get("payload")),
-        json.dumps(data.get("full_response")),
-        data.get("dossier_hash"),
-        datetime.now(timezone.utc).isoformat()
-    ))
+    if _is_postgres():
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO cases (
+                decision_id,
+                client_id,
+                module,
+                status,
+                severity,
+                risk_score,
+                decision_code,
+                payload,
+                full_response,
+                dossier_hash,
+                created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            data.get("decision_id"),
+            data.get("client_id"),
+            data.get("module"),
+            data.get("status"),
+            data.get("severity"),
+            data.get("risk_score"),
+            data.get("decision_code"),
+            Json(data.get("payload")),
+            Json(data.get("full_response")),
+            data.get("dossier_hash"),
+            created_at,
+        ))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO cases (
+                decision_id,
+                client_id,
+                module,
+                status,
+                severity,
+                risk_score,
+                decision_code,
+                payload,
+                full_response,
+                dossier_hash,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            data.get("decision_id"),
+            data.get("client_id"),
+            data.get("module"),
+            data.get("status"),
+            data.get("severity"),
+            data.get("risk_score"),
+            data.get("decision_code"),
+            json.dumps(data.get("payload")),
+            json.dumps(data.get("full_response")),
+            data.get("dossier_hash"),
+            created_at,
+        ))
 
     conn.commit()
     conn.close()
@@ -328,56 +485,93 @@ def insert_case(data: dict):
 
 def get_cases(client_id: str | None = None, status: str | None = None, limit: int = 50):
     conn = get_connection()
-    cursor = conn.cursor()
 
-    query = """
-        SELECT id, decision_id, client_id, module,
-               status, severity, risk_score,
-               decision_code, dossier_hash, created_at
-        FROM cases
-    """
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        query = """
+            SELECT id, decision_id, client_id, module,
+                   status, severity, risk_score,
+                   decision_code, dossier_hash, created_at
+            FROM cases
+        """
+        conditions = []
+        params = []
 
-    conditions = []
-    params = []
+        if client_id:
+            conditions.append("client_id = %s")
+            params.append(client_id)
 
-    if client_id:
-        conditions.append("client_id = ?")
-        params.append(client_id)
+        if status:
+            conditions.append("status = %s")
+            params.append(status)
 
-    if status:
-        conditions.append("status = ?")
-        params.append(status)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY id DESC LIMIT %s"
+        params.append(limit)
+        cursor.execute(query, tuple(params))
+    else:
+        cursor = conn.cursor()
+        query = """
+            SELECT id, decision_id, client_id, module,
+                   status, severity, risk_score,
+                   decision_code, dossier_hash, created_at
+            FROM cases
+        """
+        conditions = []
+        params = []
 
-    query += " ORDER BY id DESC LIMIT ?"
-    params.append(limit)
+        if client_id:
+            conditions.append("client_id = ?")
+            params.append(client_id)
 
-    cursor.execute(query, tuple(params))
-    rows = cursor.fetchall()
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        cursor.execute(query, tuple(params))
+
+    rows = _fetchall_dicts(cursor)
     conn.close()
 
-    return [dict(row) for row in rows]
+    for row in rows:
+        row["created_at"] = str(row["created_at"])
+
+    return rows
 
 
 def get_case_by_decision_id(decision_id: str):
     conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT full_response, dossier_hash
-        FROM cases
-        WHERE decision_id = ?
-        LIMIT 1
-    """, (decision_id,))
+    if _is_postgres():
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("""
+            SELECT full_response, dossier_hash
+            FROM cases
+            WHERE decision_id = %s
+            LIMIT 1
+        """, (decision_id,))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT full_response, dossier_hash
+            FROM cases
+            WHERE decision_id = ?
+            LIMIT 1
+        """, (decision_id,))
 
-    row = cursor.fetchone()
+    row = _fetchone_dict(cursor)
     conn.close()
 
     if not row:
         return None
 
-    case = json.loads(row["full_response"])
+    case = row["full_response"] if _is_postgres() else json.loads(row["full_response"])
     case["dossier_hash"] = row["dossier_hash"]
     return case
