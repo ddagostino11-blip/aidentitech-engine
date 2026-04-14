@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
-from src.core.db import get_case_by_decision_id, get_case_summaries
+from pydantic import BaseModel
+from src.core.db import get_case_by_decision_id, get_case_summaries, insert_review_action
 from src.core.auth import get_client_from_api_key
 from src.core.pdf_generator import generate_dossier_pdf
 from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
@@ -8,6 +9,11 @@ import csv
 import io
 
 router = APIRouter(tags=["cases"])
+
+
+class ReviewRequest(BaseModel):
+    action: str  # APPROVED | REJECTED
+    reason: str | None = None
 
 
 def _client_from_key(x_api_key: str | None) -> str:
@@ -233,3 +239,40 @@ def get_case_by_id(
 ):
     case = _load_authorized_case(decision_id, x_api_key)
     return case
+
+
+# =========================
+# 8️⃣ REVIEW MANUALE
+# =========================
+@router.post("/cases/{decision_id}/review")
+def review_case(
+    decision_id: str,
+    request: ReviewRequest,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    case = _load_authorized_case(decision_id, x_api_key)
+    client_id = case.get("client_id")
+
+    action = request.action.upper()
+
+    if action not in {"APPROVED", "REJECTED"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid action. Use APPROVED or REJECTED"
+        )
+
+    insert_review_action(
+        decision_id=decision_id,
+        client_id=client_id,
+        reviewer_id=client_id,  # per ora semplificato
+        action=action,
+        reason=request.reason,
+    )
+
+    return {
+        "decision_id": decision_id,
+        "client_id": client_id,
+        "review_action": action,
+        "reason": request.reason,
+        "status": "RECORDED"
+    }

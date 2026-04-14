@@ -123,6 +123,23 @@ def init_db():
             ON api_keys(client_id)
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS review_actions (
+                id SERIAL PRIMARY KEY,
+                decision_id TEXT,
+                client_id TEXT,
+                reviewer_id TEXT,
+                action TEXT,
+                reason TEXT,
+                created_at TIMESTAMPTZ
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_review_actions_decision_id
+            ON review_actions(decision_id)
+        """)
+
         conn.commit()
         conn.close()
         return
@@ -178,6 +195,23 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_api_keys_client_id
         ON api_keys(client_id)
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS review_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision_id TEXT,
+            client_id TEXT,
+            reviewer_id TEXT,
+            action TEXT,
+            reason TEXT,
+            created_at TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_review_actions_decision_id
+        ON review_actions(decision_id)
     """)
 
     conn.commit()
@@ -638,3 +672,58 @@ def get_case_summaries(
         summaries = [row for row in summaries if row["severity"] == severity]
 
     return summaries
+
+
+def insert_review_action(
+    decision_id: str,
+    client_id: str,
+    reviewer_id: str,
+    action: str,
+    reason: str | None = None,
+):
+    conn = get_connection()
+    created_at = _utc_now_iso()
+
+    if _is_postgres():
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO review_actions (
+                decision_id,
+                client_id,
+                reviewer_id,
+                action,
+                reason,
+                created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            decision_id,
+            client_id,
+            reviewer_id,
+            action,
+            reason,
+            created_at,
+        ))
+    else:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO review_actions (
+                decision_id,
+                client_id,
+                reviewer_id,
+                action,
+                reason,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            decision_id,
+            client_id,
+            reviewer_id,
+            action,
+            reason,
+            created_at,
+        ))
+
+    conn.commit()
+    conn.close()
