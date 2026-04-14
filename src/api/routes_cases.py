@@ -180,7 +180,7 @@ def get_cases(
     query = """
         SELECT id, decision_id, client_id, module,
                status, severity, risk_score,
-               decision_code, created_at
+               decision_code, dossier_hash, created_at
         FROM cases
     """
 
@@ -244,14 +244,16 @@ def verify_case_dossier(
     case = _load_authorized_case(decision_id, x_api_key)
 
     dossier = build_dossier_payload(case)
-    dossier_hash = compute_dossier_hash(dossier)
+    recomputed_hash = compute_dossier_hash(dossier)
+    stored_hash = case.get("dossier_hash")
 
     return {
         "decision_id": case.get("decision_id"),
         "client_id": case.get("client_id"),
         "module": case.get("module"),
-        "verified": True,
-        "dossier_hash": dossier_hash,
+        "verified": stored_hash == recomputed_hash,
+        "stored_hash": stored_hash,
+        "recomputed_hash": recomputed_hash,
         "ledger_hash": case.get("ledger_hash"),
     }
 
