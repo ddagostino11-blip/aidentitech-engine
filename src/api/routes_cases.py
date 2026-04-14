@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from src.core.db import get_connection, get_case_by_decision_id
 from src.core.auth import get_client_from_api_key
 from src.core.pdf_generator import generate_dossier_pdf
+from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
 import csv
 import io
 
@@ -14,6 +15,20 @@ def _client_from_key(x_api_key: str | None) -> str:
         return get_client_from_api_key(x_api_key)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+def _load_authorized_case(decision_id: str, x_api_key: str | None):
+    client_id = _client_from_key(x_api_key)
+
+    case = get_case_by_decision_id(decision_id)
+
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if case.get("client_id") != client_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return case
 
 
 # =========================
@@ -207,80 +222,59 @@ def get_case_dossier(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _client_from_key(x_api_key)
+    case = _load_authorized_case(decision_id, x_api_key)
 
-    case = get_case_by_decision_id(decision_id)
+    dossier = build_dossier_payload(case)
+    dossier_hash = compute_dossier_hash(dossier)
 
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-
-    if case.get("client_id") != client_id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    dossier = {
-        "engine": case.get("engine"),
-        "decision_id": case.get("decision_id"),
-        "decision_timestamp": case.get("decision_timestamp"),
-        "client_id": case.get("client_id"),
-        "module": case.get("module"),
-        "decision": {
-            "status": case.get("status"),
-            "severity": case.get("severity"),
-            "risk_score": case.get("risk_score"),
-            "decision_code": case.get("decision_code"),
-            "recommended_action": case.get("recommended_action"),
-            "batch_disposition": case.get("batch_disposition"),
-        },
-        "audit": case.get("audit", []),
-        "explanation": case.get("explanation", {}),
-        "integration": case.get("integration", {}),
-        "payload": case.get("normalized_payload", {}),
-        "versioning": case.get("versioning", {}),
-        "compliance_scope": case.get("compliance_scope", {}),
-        "ledger_hash": case.get("ledger_hash"),
+    return {
+        **dossier,
+        "dossier_hash": dossier_hash,
     }
-
-    return dossier
 
 
 # =========================
-# 5️⃣ DOSSIER PDF
+# 5️⃣ VERIFY DOSSIER
+# =========================
+@router.get("/cases/{decision_id}/verify")
+def verify_case_dossier(
+    decision_id: str,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    case = _load_authorized_case(decision_id, x_api_key)
+
+    dossier = build_dossier_payload(case)
+    dossier_hash = compute_dossier_hash(dossier)
+
+    return {
+        "decision_id": case.get("decision_id"),
+        "client_id": case.get("client_id"),
+        "module": case.get("module"),
+        "verified": True,
+        "dossier_hash": dossier_hash,
+        "ledger_hash": case.get("ledger_hash"),
+    }
+
+
+# =========================
+# 6️⃣ DOSSIER PDF
 # =========================
 @router.get("/cases/{decision_id}/dossier/pdf")
 def get_case_dossier_pdf(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _client_from_key(x_api_key)
+    case = _load_authorized_case(decision_id, x_api_key)
 
-    case = get_case_by_decision_id(decision_id)
+    dossier = build_dossier_payload(case)
+    dossier_hash = compute_dossier_hash(dossier)
 
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-
-    if case.get("client_id") != client_id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    dossier = {
-        "engine": case.get("engine"),
-        "decision_id": case.get("decision_id"),
-        "decision_timestamp": case.get("decision_timestamp"),
-        "client_id": case.get("client_id"),
-        "module": case.get("module"),
-        "decision": {
-            "status": case.get("status"),
-            "severity": case.get("severity"),
-            "risk_score": case.get("risk_score"),
-            "decision_code": case.get("decision_code"),
-            "recommended_action": case.get("recommended_action"),
-            "batch_disposition": case.get("batch_disposition"),
-        },
-        "audit": case.get("audit", []),
-        "integration": case.get("integration", {}),
-        "ledger_hash": case.get("ledger_hash"),
+    pdf_payload = {
+        **dossier,
+        "dossier_hash": dossier_hash,
     }
 
-    pdf_buffer = generate_dossier_pdf(dossier)
+    pdf_buffer = generate_dossier_pdf(pdf_payload)
 
     return StreamingResponse(
         pdf_buffer,
@@ -292,21 +286,12 @@ def get_case_dossier_pdf(
 
 
 # =========================
-# 6️⃣ SINGOLO CASE
+# 7️⃣ SINGOLO CASE
 # =========================
 @router.get("/cases/{decision_id}")
 def get_case_by_id(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _client_from_key(x_api_key)
-
-    case = get_case_by_decision_id(decision_id)
-
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-
-    if case.get("client_id") != client_id:
-        raise HTTPException(status_code=404, detail="Case not found")
-
+    case = _load_authorized_case(decision_id, x_api_key)
     return case
