@@ -18,6 +18,9 @@ from src.core.auth import get_client_from_api_key
 # payload adapter
 from src.core.payload_adapter import normalize_payload
 
+# dossier seal
+from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
+
 # routes
 from src.api.routes_cases import router as cases_router
 from src.api.routes_admin import router as admin_router
@@ -184,6 +187,11 @@ def validate(
             "ledger_hash": ledger_entry.get("hash"),
         }
 
+        # dossier + hash
+        dossier_source = build_dossier_payload(response)
+        dossier_hash = compute_dossier_hash(dossier_source)
+        response["dossier_hash"] = dossier_hash
+
         # salvataggio DB
         insert_case({
             "decision_id": decision_id,
@@ -195,7 +203,7 @@ def validate(
             "decision_code": decision.get("decision_code"),
             "payload": payload,
             "full_response": response,
-            "dossier_hash": response.get("dossier_hash"),
+            "dossier_hash": dossier_hash,
         })
 
         return response
