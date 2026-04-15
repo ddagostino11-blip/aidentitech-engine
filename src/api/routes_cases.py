@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from core.ledger_chain import append_ledger_entry
 from src.core.db import (
     get_case_by_decision_id,
     get_case_summaries,
@@ -275,12 +276,23 @@ def review_case(
         reason=request.reason,
     )
 
+    ledger_entry = append_ledger_entry({
+        "client_id": client_id,
+        "module": case.get("module"),
+        "decision_id": decision_id,
+        "event_type": "HUMAN_REVIEW",
+        "review_action": action,
+        "reviewer_id": client_id,
+        "reason": request.reason,
+    })
+
     return {
         "decision_id": decision_id,
         "client_id": client_id,
         "review_action": action,
         "reason": request.reason,
         "status": "RECORDED",
+        "ledger_hash": ledger_entry.get("hash"),
     }
 
 
