@@ -24,25 +24,40 @@ class ReviewRequest(BaseModel):
     reason: str | None = None
 
 
-def _client_from_key(x_api_key: str | None) -> str:
+def _auth_from_key(x_api_key: str | None) -> dict:
     try:
         return get_client_from_api_key(x_api_key)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
 
+def _is_super_admin(auth: dict) -> bool:
+    return auth.get("role") == "super_admin"
+
+
+def _client_id_from_key(x_api_key: str | None) -> str:
+    auth = _auth_from_key(x_api_key)
+    return auth["client_id"]
+
+
+def _require_reviewer(auth: dict):
+    if auth.get("role") != "reviewer":
+        raise HTTPException(status_code=403, detail="Reviewer access required")
+
+
 def _load_authorized_case(decision_id: str, x_api_key: str | None):
-    client_id = _client_from_key(x_api_key)
+    auth = _auth_from_key(x_api_key)
+    client_id = auth["client_id"]
 
     case = get_case_by_decision_id(decision_id)
 
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    if case.get("client_id") != client_id:
+    if not _is_super_admin(auth) and case.get("client_id") != client_id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return case
+    return case, auth
 
 
 # =========================
@@ -52,7 +67,7 @@ def _load_authorized_case(decision_id: str, x_api_key: str | None):
 def get_cases_stats(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _client_from_key(x_api_key)
+    client_id = _client_id_from_key(x_api_key)
 
     summaries = get_case_summaries(
         client_id=client_id,
@@ -92,7 +107,7 @@ def export_cases(
     limit: int = Query(default=1000, ge=1, le=10000),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _client_from_key(x_api_key)
+    client_id = _client_id_from_key(x_api_key)
 
     rows = get_case_summaries(
         client_id=client_id,
@@ -150,7 +165,7 @@ def get_cases(
     limit: int = Query(default=50, ge=1, le=200),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    client_id = _client_from_key(x_api_key)
+    client_id = _client_id_from_key(x_api_key)
 
     rows = get_case_summaries(
         client_id=client_id,
@@ -172,7 +187,7 @@ def get_case_dossier(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    case = _load_authorized_case(decision_id, x_api_key)
+    case, _auth = _load_authorized_case(decision_id, x_api_key)
 
     dossier = build_dossier_payload(case)
     dossier_hash = compute_dossier_hash(dossier)
@@ -191,7 +206,7 @@ def verify_case_dossier(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    case = _load_authorized_case(decision_id, x_api_key)
+    case, _auth = _load_authorized_case(decision_id, x_api_key)
 
     dossier = build_dossier_payload(case)
     recomputed_hash = compute_dossier_hash(dossier)
@@ -216,7 +231,7 @@ def get_case_dossier_pdf(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    case = _load_authorized_case(decision_id, x_api_key)
+    case, _auth = _load_authorized_case(decision_id, x_api_key)
 
     dossier = build_dossier_payload(case)
     dossier_hash = compute_dossier_hash(dossier)
@@ -245,7 +260,7 @@ def get_case_by_id(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    case = _load_authorized_case(decision_id, x_api_key)
+    case, _auth = _load_authorized_case(decision_id, x_api_key)
     return case
 
 
@@ -258,8 +273,11 @@ def review_case(
     request: ReviewRequest,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    case = _load_authorized_case(decision_id, x_api_key)
+    case, auth = _load_authorized_case(decision_id, x_api_key)
+    _require_reviewer(auth)
+
     client_id = case.get("client_id")
+    reviewer_id = auth.get("client_id")
 
     action = request.action.upper()
 
@@ -276,7 +294,7 @@ def review_case(
             client_id=client_id,
             module=case.get("module"),
             review_action=action,
-            reviewer_id=client_id,
+            reviewer_id=reviewer_id,
             reason=request.reason,
             metadata={},
         )
@@ -285,7 +303,7 @@ def review_case(
     insert_review_action(
         decision_id=decision_id,
         client_id=client_id,
-        reviewer_id=client_id,
+        reviewer_id=reviewer_id,
         action=action,
         reason=request.reason,
         ledger_hash=ledger_entry.get("hash"),
@@ -309,7 +327,7 @@ def get_case_reviews(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    case = _load_authorized_case(decision_id, x_api_key)
+    case, _auth = _load_authorized_case(decision_id, x_api_key)
 
     reviews = get_reviews_by_decision_id(decision_id)
 
@@ -329,7 +347,7 @@ def get_timeline(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    case = _load_authorized_case(decision_id, x_api_key)
+    case, _auth = _load_authorized_case(decision_id, x_api_key)
 
     timeline = get_case_timeline_from_ledger(decision_id)
 

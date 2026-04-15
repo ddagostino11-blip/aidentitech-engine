@@ -24,11 +24,31 @@ class RotateApiKeyRequest(BaseModel):
     api_key: str
 
 
-def _require_admin(x_api_key: str | None):
+def _require_admin_scope(x_api_key: str | None):
     try:
-        return get_client_from_api_key(x_api_key)
+        auth = get_client_from_api_key(x_api_key)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+    role = auth.get("role")
+
+    if role not in {"admin", "super_admin"}:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    return auth
+
+
+def _require_super_admin(x_api_key: str | None):
+    auth = _require_admin_scope(x_api_key)
+
+    if auth.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
+
+    return auth
+
+
+def _is_super_admin(auth: dict) -> bool:
+    return auth.get("role") == "super_admin"
 
 
 def _read_ledger_entries():
@@ -51,6 +71,21 @@ def _read_ledger_entries():
             continue
 
     return entries
+
+
+def _entry_belongs_to_auth(entry: dict, auth: dict) -> bool:
+    if _is_super_admin(auth):
+        return True
+
+    data = entry.get("data", {})
+    return data.get("client_id") == auth.get("client_id")
+
+
+def _filter_entries_for_auth(entries: list[dict], auth: dict) -> list[dict]:
+    if _is_super_admin(auth):
+        return entries
+
+    return [entry for entry in entries if _entry_belongs_to_auth(entry, auth)]
 
 
 def _normalize_case_ledger_entry(entry: dict) -> dict | None:
@@ -182,31 +217,53 @@ def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> d
 
 
 @router.get("/admin/api-keys")
-def get_api_keys():
-    return list_api_keys()
+def get_api_keys(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    auth = _require_super_admin(x_api_key)
+
+    return {
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
+        "items": list_api_keys(),
+    }
 
 
 @router.post("/admin/api-keys/revoke")
-def revoke_api_key_endpoint(request: RevokeApiKeyRequest):
+def revoke_api_key_endpoint(
+    request: RevokeApiKeyRequest,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    auth = _require_super_admin(x_api_key)
+
     revoked = revoke_api_key(request.api_key)
 
     if not revoked:
         raise HTTPException(status_code=404, detail="API key not found")
 
     return {
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
         "status": "revoked",
         "api_key": request.api_key,
     }
 
 
 @router.post("/admin/api-keys/rotate")
-def rotate_api_key_endpoint(request: RotateApiKeyRequest):
+def rotate_api_key_endpoint(
+    request: RotateApiKeyRequest,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    auth = _require_super_admin(x_api_key)
+
     new_key = rotate_api_key(request.api_key)
 
     if not new_key:
         raise HTTPException(status_code=404, detail="API key not found")
 
     return {
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
         "status": "rotated",
         "old_api_key": request.api_key,
         "new_api_key": new_key,
@@ -217,12 +274,13 @@ def rotate_api_key_endpoint(request: RotateApiKeyRequest):
 def verify_ledger(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    admin_client = _require_admin(x_api_key)
+    auth = _require_admin_scope(x_api_key)
 
     ledger_ok = verify_chain()
 
     return {
-        "requested_by": admin_client,
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
         "ledger_ok": ledger_ok,
     }
 
@@ -231,14 +289,16 @@ def verify_ledger(
 def get_ledger_raw(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    admin_client = _require_admin(x_api_key)
+    auth = _require_admin_scope(x_api_key)
 
     entries = _read_ledger_entries()
+    scoped_entries = _filter_entries_for_auth(entries, auth)
 
     return {
-        "requested_by": admin_client,
-        "entries_count": len(entries),
-        "entries": entries,
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
+        "entries_count": len(scoped_entries),
+        "entries": scoped_entries,
     }
 
 
@@ -247,12 +307,13 @@ def get_ledger_by_case(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    admin_client = _require_admin(x_api_key)
+    auth = _require_admin_scope(x_api_key)
 
     entries = get_ledger_entries_by_decision_id(decision_id)
+    scoped_entries = _filter_entries_for_auth(entries, auth)
 
     normalized_entries = []
-    for entry in entries:
+    for entry in scoped_entries:
         normalized = _normalize_case_ledger_entry(entry)
         if normalized:
             normalized_entries.append(normalized)
@@ -261,7 +322,8 @@ def get_ledger_by_case(
         raise HTTPException(status_code=404, detail="Ledger entries not found for case")
 
     return {
-        "requested_by": admin_client,
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
         "decision_id": decision_id,
         "entries_count": len(normalized_entries),
         "entries": normalized_entries,
@@ -273,12 +335,13 @@ def get_ledger_summary(
     decision_id: str,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    admin_client = _require_admin(x_api_key)
+    auth = _require_admin_scope(x_api_key)
 
     entries = get_ledger_entries_by_decision_id(decision_id)
+    scoped_entries = _filter_entries_for_auth(entries, auth)
 
     normalized_entries = []
-    for entry in entries:
+    for entry in scoped_entries:
         normalized = _normalize_case_ledger_entry(entry)
         if normalized:
             normalized_entries.append(normalized)
@@ -286,6 +349,7 @@ def get_ledger_summary(
     summary = _build_ledger_summary(normalized_entries, decision_id)
 
     return {
-        "requested_by": admin_client,
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
         **summary,
     }

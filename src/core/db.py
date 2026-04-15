@@ -140,9 +140,16 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 api_key TEXT UNIQUE,
                 client_id TEXT,
+                role TEXT DEFAULT 'client',
                 created_at TIMESTAMPTZ
             )
         """)
+
+        if not _column_exists_postgres(cursor, "api_keys", "role"):
+            cursor.execute("""
+                ALTER TABLE api_keys
+                ADD COLUMN role TEXT DEFAULT 'client'
+            """)
 
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_api_keys_client_id
@@ -221,9 +228,16 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             api_key TEXT UNIQUE,
             client_id TEXT,
+            role TEXT DEFAULT 'client',
             created_at TEXT
         )
     """)
+
+    if not _column_exists_sqlite(cursor, "api_keys", "role"):
+        cursor.execute("""
+            ALTER TABLE api_keys
+            ADD COLUMN role TEXT DEFAULT 'client'
+        """)
 
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_api_keys_client_id
@@ -258,7 +272,7 @@ def init_db():
     conn.close()
 
 
-def insert_api_key(api_key: str, client_id: str):
+def insert_api_key(api_key: str, client_id: str, role: str = "client"):
     conn = get_connection()
     api_key_hash = _hash_api_key(api_key)
     created_at = _utc_now_iso()
@@ -266,16 +280,16 @@ def insert_api_key(api_key: str, client_id: str):
     if _is_postgres():
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO api_keys (api_key, client_id, created_at)
-            VALUES (%s, %s, %s)
+            INSERT INTO api_keys (api_key, client_id, role, created_at)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT (api_key) DO NOTHING
-        """, (api_key_hash, client_id, created_at))
+        """, (api_key_hash, client_id, role, created_at))
     else:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT OR IGNORE INTO api_keys (api_key, client_id, created_at)
-            VALUES (?, ?, ?)
-        """, (api_key_hash, client_id, created_at))
+            INSERT OR IGNORE INTO api_keys (api_key, client_id, role, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (api_key_hash, client_id, role, created_at))
 
     conn.commit()
     conn.close()
@@ -287,7 +301,7 @@ def get_client_by_api_key(api_key: str):
     if _is_postgres():
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT client_id
+            SELECT client_id, role
             FROM api_keys
             WHERE api_key = %s
             LIMIT 1
@@ -295,7 +309,7 @@ def get_client_by_api_key(api_key: str):
     else:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT client_id
+            SELECT client_id, role
             FROM api_keys
             WHERE api_key = ?
             LIMIT 1
@@ -304,7 +318,13 @@ def get_client_by_api_key(api_key: str):
     row = _fetchone_dict(cursor)
     conn.close()
 
-    return row["client_id"] if row else None
+    if not row:
+        return None
+
+    return {
+        "client_id": row["client_id"],
+        "role": row.get("role") or "client",
+    }
 
 
 def list_api_keys():
@@ -316,7 +336,7 @@ def list_api_keys():
         cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT id, api_key, client_id, created_at
+        SELECT id, api_key, client_id, role, created_at
         FROM api_keys
         ORDER BY id DESC
     """)
@@ -329,6 +349,7 @@ def list_api_keys():
             "id": row["id"],
             "api_key_preview": _api_key_preview(row["api_key"]),
             "client_id": row["client_id"],
+            "role": row.get("role") or "client",
             "created_at": str(row["created_at"]),
         }
         for row in rows
@@ -366,7 +387,7 @@ def rotate_api_key(old_api_key: str):
     if _is_postgres():
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT client_id
+            SELECT client_id, role
             FROM api_keys
             WHERE api_key = %s
             LIMIT 1
@@ -374,7 +395,7 @@ def rotate_api_key(old_api_key: str):
     else:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT client_id
+            SELECT client_id, role
             FROM api_keys
             WHERE api_key = ?
             LIMIT 1
@@ -387,6 +408,7 @@ def rotate_api_key(old_api_key: str):
         return None
 
     client_id = row["client_id"]
+    role = row.get("role") or "client"
     new_api_key = f"key_{secrets.token_hex(16)}"
     new_api_key_hash = _hash_api_key(new_api_key)
     created_at = _utc_now_iso()
@@ -398,9 +420,9 @@ def rotate_api_key(old_api_key: str):
             WHERE api_key = %s
         """, (old_api_key_hash,))
         cursor.execute("""
-            INSERT INTO api_keys (api_key, client_id, created_at)
-            VALUES (%s, %s, %s)
-        """, (new_api_key_hash, client_id, created_at))
+            INSERT INTO api_keys (api_key, client_id, role, created_at)
+            VALUES (%s, %s, %s, %s)
+        """, (new_api_key_hash, client_id, role, created_at))
     else:
         cursor = conn.cursor()
         cursor.execute("""
@@ -408,9 +430,9 @@ def rotate_api_key(old_api_key: str):
             WHERE api_key = ?
         """, (old_api_key_hash,))
         cursor.execute("""
-            INSERT INTO api_keys (api_key, client_id, created_at)
-            VALUES (?, ?, ?)
-        """, (new_api_key_hash, client_id, created_at))
+            INSERT INTO api_keys (api_key, client_id, role, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (new_api_key_hash, client_id, role, created_at))
 
     conn.commit()
     conn.close()
@@ -891,6 +913,7 @@ def get_case_timeline(decision_id: str):
         "timeline": timeline,
         "reviews_count": len(reviews),
     }
+
 
 def _build_timeline_event_from_ledger_entry(entry: dict):
     data = entry.get("data", {})
