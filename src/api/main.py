@@ -154,12 +154,17 @@ def validate(
         decision_id = str(uuid.uuid4())
         decision_timestamp = datetime.now(timezone.utc).isoformat()
 
-        # ledger
+        # ledger event ricco
         ledger_entry = append_ledger_entry({
+            "event_type": "ENGINE_DECISION",
             "client_id": client_id,
             "module": request.module,
-            "decision": decision.get("status"),
             "decision_id": decision_id,
+            "status": decision.get("status"),
+            "severity": decision.get("severity"),
+            "risk_score": decision.get("risk_score"),
+            "decision_code": decision.get("decision_code"),
+            "decision": decision.get("status"),
         })
 
         # response finale
