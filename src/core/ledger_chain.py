@@ -47,6 +47,40 @@ def append_ledger_entry(data: dict) -> dict:
     return entry
 
 
+def get_ledger_entries() -> list[dict]:
+    """Return all ledger entries in append order."""
+    if not os.path.exists(LEDGER_PATH):
+        return []
+
+    with open(LEDGER_PATH, "r") as f:
+        lines = f.readlines()
+
+    entries = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    return entries
+
+
+def get_ledger_entries_by_decision_id(decision_id: str) -> list[dict]:
+    """Return all ledger entries whose payload references the given decision_id."""
+    entries = get_ledger_entries()
+
+    return [
+        entry
+        for entry in entries
+        if entry.get("data", {}).get("decision_id") == decision_id
+    ]
+
+
 def verify_chain() -> bool:
     """Verify integrity of the entire ledger chain."""
     if not os.path.exists(LEDGER_PATH):
@@ -64,7 +98,6 @@ def verify_chain() -> bool:
         if expected_prev != prev_hash:
             return False
 
-        # Recompute hash
         record_copy = {
             "timestamp": record["timestamp"],
             "data": record["data"],

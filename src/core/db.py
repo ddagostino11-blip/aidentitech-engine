@@ -10,6 +10,8 @@ import psycopg2
 import psycopg2.extras
 from psycopg2.extras import Json
 
+from src.core.ledger_chain import get_ledger_entries_by_decision_id
+
 
 SQLITE_DB_PATH = "runtime/cases.db"
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -888,4 +890,61 @@ def get_case_timeline(decision_id: str):
         "decision_id": decision_id,
         "timeline": timeline,
         "reviews_count": len(reviews),
+    }
+
+def _build_timeline_event_from_ledger_entry(entry: dict):
+    data = entry.get("data", {})
+    event_type = data.get("event_type")
+
+    if event_type == "HUMAN_REVIEW":
+        return {
+            "type": "REVIEW",
+            "timestamp": entry.get("timestamp"),
+            "data": {
+                "action": data.get("review_action"),
+                "reason": data.get("reason"),
+                "reviewer_id": data.get("reviewer_id"),
+                "ledger_hash": entry.get("hash"),
+            }
+        }
+
+    # fallback: vecchie decisioni senza event_type esplicito
+    if data.get("decision_id"):
+        return {
+            "type": "DECISION",
+            "timestamp": entry.get("timestamp"),
+            "data": {
+                "status": data.get("status") or data.get("decision"),
+                "severity": data.get("severity"),
+                "risk_score": data.get("risk_score"),
+                "decision_code": data.get("decision_code"),
+                "ledger_hash": entry.get("hash"),
+            }
+        }
+
+    return None
+
+
+def get_case_timeline_from_ledger(decision_id: str):
+    entries = get_ledger_entries_by_decision_id(decision_id)
+
+    if not entries:
+        return None
+
+    timeline = []
+
+    for entry in entries:
+        event = _build_timeline_event_from_ledger_entry(entry)
+        if event:
+            timeline.append(event)
+
+    timeline = sorted(
+        timeline,
+        key=lambda item: _parse_ts(item.get("timestamp"))
+    )
+
+    return {
+        "decision_id": decision_id,
+        "timeline": timeline,
+        "events_count": len(timeline),
     }

@@ -8,6 +8,7 @@ from src.core.db import (
     insert_review_action,
     get_reviews_by_decision_id,
     get_case_timeline,
+    get_case_timeline_from_ledger,
 )
 from src.core.auth import get_client_from_api_key
 from src.core.pdf_generator import generate_dossier_pdf
@@ -327,7 +328,10 @@ def get_timeline(
 ):
     case = _load_authorized_case(decision_id, x_api_key)
 
-    timeline = get_case_timeline(decision_id)
+    timeline = get_case_timeline_from_ledger(decision_id)
+
+    if not timeline:
+        timeline = get_case_timeline(decision_id)
 
     if not timeline:
         raise HTTPException(status_code=404, detail="Timeline not found")
