@@ -1,9 +1,36 @@
 import json
 import hashlib
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 LEDGER_PATH = "runtime/logs/ledger_chain.jsonl"
+
+EVENT_TYPE_ENGINE_DECISION = "ENGINE_DECISION"
+EVENT_TYPE_HUMAN_REVIEW = "HUMAN_REVIEW"
+
+ALLOWED_EVENT_TYPES = {
+    EVENT_TYPE_ENGINE_DECISION,
+    EVENT_TYPE_HUMAN_REVIEW,
+}
+
+CANONICAL_LEDGER_KEYS = [
+    "event_type",
+    "decision_id",
+    "client_id",
+    "module",
+    "status",
+    "severity",
+    "risk_score",
+    "decision_code",
+    "review_action",
+    "reviewer_id",
+    "reason",
+    "metadata",
+]
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _hash_record(record: dict) -> str:
@@ -26,6 +53,24 @@ def _get_last_hash() -> str:
         return last_record.get("hash", "GENESIS")
 
 
+def _validate_event_type(event_type: str) -> None:
+    if event_type not in ALLOWED_EVENT_TYPES:
+        raise ValueError(
+            f"Invalid event_type: {event_type}. "
+            f"Allowed values: {sorted(ALLOWED_EVENT_TYPES)}"
+        )
+
+
+def _normalize_metadata(metadata: dict | None) -> dict:
+    if metadata is None:
+        return {}
+
+    if not isinstance(metadata, dict):
+        raise ValueError("metadata must be a dict")
+
+    return metadata
+
+
 def build_canonical_ledger_data(
     event_type: str,
     decision_id: str | None = None,
@@ -43,9 +88,12 @@ def build_canonical_ledger_data(
     """
     Build canonical ledger payload for all new entries.
 
-    All keys are always present to keep the ledger schema uniform.
+    All canonical keys are always present.
     """
-    canonical_status = review_action if event_type == "HUMAN_REVIEW" else status
+
+    _validate_event_type(event_type)
+
+    canonical_status = review_action if event_type == EVENT_TYPE_HUMAN_REVIEW else status
 
     return {
         "event_type": event_type,
@@ -59,8 +107,26 @@ def build_canonical_ledger_data(
         "review_action": review_action,
         "reviewer_id": reviewer_id,
         "reason": reason,
-        "metadata": metadata or {},
+        "metadata": _normalize_metadata(metadata),
     }
+
+
+def _is_canonical_ledger_data(data: dict) -> bool:
+    if not isinstance(data, dict):
+        return False
+
+    event_type = data.get("event_type")
+    if event_type not in ALLOWED_EVENT_TYPES:
+        return False
+
+    for key in CANONICAL_LEDGER_KEYS:
+        if key not in data:
+            return False
+
+    if not isinstance(data.get("metadata"), dict):
+        return False
+
+    return True
 
 
 def append_ledger_entry(data: dict) -> dict:
@@ -70,7 +136,7 @@ def append_ledger_entry(data: dict) -> dict:
     prev_hash = _get_last_hash()
 
     entry = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _utc_now_iso(),
         "data": data,
         "prev_hash": prev_hash,
     }

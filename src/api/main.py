@@ -120,7 +120,8 @@ def validate(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     try:
-        client_id = get_client_from_api_key(x_api_key)
+        auth = get_client_from_api_key(x_api_key)
+        client_id = auth["client_id"]
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -171,6 +172,7 @@ def validate(
                     "blocking_issues_count": decision.get("blocking_issues_count"),
                     "regulatory_impact": decision.get("regulatory_impact"),
                     "batch_disposition": decision.get("batch_disposition"),
+                    "recommended_action": decision.get("recommended_action"),
                 },
             )
         )
