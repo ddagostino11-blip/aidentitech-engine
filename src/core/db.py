@@ -71,6 +71,19 @@ def _column_exists_sqlite(cursor, table_name: str, column_name: str) -> bool:
     return any(col["name"] == column_name for col in columns)
 
 
+def _parse_ts(ts: str | None):
+    if not ts:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+    try:
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def init_db():
     conn = get_connection()
 
@@ -801,3 +814,46 @@ def get_reviews_by_decision_id(decision_id: str):
         row["created_at"] = str(row["created_at"])
 
     return rows
+
+
+def get_case_timeline(decision_id: str):
+    case = get_case_by_decision_id(decision_id)
+    reviews = get_reviews_by_decision_id(decision_id)
+
+    if not case:
+        return None
+
+    timeline = []
+
+    timeline.append({
+        "type": "DECISION",
+        "timestamp": case.get("decision_timestamp"),
+        "data": {
+            "status": case.get("status"),
+            "severity": case.get("severity"),
+            "risk_score": case.get("risk_score"),
+            "decision_code": case.get("decision_code"),
+        }
+    })
+
+    for review in reviews:
+        timeline.append({
+            "type": "REVIEW",
+            "timestamp": review.get("created_at"),
+            "data": {
+                "action": review.get("action"),
+                "reason": review.get("reason"),
+                "reviewer_id": review.get("reviewer_id"),
+            }
+        })
+
+    timeline = sorted(
+        timeline,
+        key=lambda item: _parse_ts(item.get("timestamp"))
+    )
+
+    return {
+        "decision_id": decision_id,
+        "timeline": timeline,
+        "reviews_count": len(reviews),
+    }
