@@ -60,6 +60,61 @@ def _load_authorized_case(decision_id: str, x_api_key: str | None):
     return case, auth
 
 
+def _build_case_summary_response(case: dict, timeline: dict | None) -> dict:
+    timeline_items = (timeline or {}).get("timeline", [])
+
+    decision_events = [
+        item for item in timeline_items
+        if item.get("type") == "DECISION"
+    ]
+    review_events = [
+        item for item in timeline_items
+        if item.get("type") == "REVIEW"
+    ]
+
+    latest_decision = decision_events[-1] if decision_events else None
+    latest_review = review_events[-1] if review_events else None
+    latest_event = timeline_items[-1] if timeline_items else None
+
+    engine_status = (
+        latest_decision.get("data", {}).get("status")
+        if latest_decision
+        else case.get("status")
+    )
+    latest_review_action = (
+        latest_review.get("data", {}).get("action")
+        if latest_review
+        else None
+    )
+    final_status = latest_review_action or engine_status
+
+    latest_ledger_hash = None
+    if latest_event:
+        latest_ledger_hash = latest_event.get("data", {}).get("ledger_hash")
+    if not latest_ledger_hash:
+        latest_ledger_hash = case.get("ledger_hash")
+
+    return {
+        "decision_id": case.get("decision_id"),
+        "client_id": case.get("client_id"),
+        "module": case.get("module"),
+        "engine_status": engine_status,
+        "final_status": final_status,
+        "has_human_review": len(review_events) > 0,
+        "latest_review_action": latest_review_action,
+        "review_count": len(review_events),
+        "decision_timestamp": case.get("decision_timestamp"),
+        "latest_event_timestamp": latest_event.get("timestamp") if latest_event else case.get("decision_timestamp"),
+        "events_count": len(timeline_items),
+        "latest_ledger_hash": latest_ledger_hash,
+        "severity": case.get("severity"),
+        "risk_score": case.get("risk_score"),
+        "decision_code": case.get("decision_code"),
+        "review_required": case.get("review_required"),
+        "dossier_hash": case.get("dossier_hash"),
+    }
+
+
 # =========================
 # 1️⃣ STATS
 # =========================
@@ -262,6 +317,24 @@ def get_case_by_id(
 ):
     case, _auth = _load_authorized_case(decision_id, x_api_key)
     return case
+
+
+# =========================
+# 7️⃣bis SUMMARY CASE
+# =========================
+@router.get("/cases/{decision_id}/summary")
+def get_case_summary(
+    decision_id: str,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    case, _auth = _load_authorized_case(decision_id, x_api_key)
+
+    timeline = get_case_timeline_from_ledger(decision_id)
+
+    if not timeline:
+        timeline = get_case_timeline(decision_id)
+
+    return _build_case_summary_response(case, timeline)
 
 
 # =========================
