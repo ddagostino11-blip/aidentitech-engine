@@ -26,6 +26,43 @@ def _get_last_hash() -> str:
         return last_record.get("hash", "GENESIS")
 
 
+def build_canonical_ledger_data(
+    event_type: str,
+    decision_id: str | None = None,
+    client_id: str | None = None,
+    module: str | None = None,
+    status: str | None = None,
+    severity: str | None = None,
+    risk_score: int | float | None = None,
+    decision_code: str | None = None,
+    review_action: str | None = None,
+    reviewer_id: str | None = None,
+    reason: str | None = None,
+    metadata: dict | None = None,
+) -> dict:
+    """
+    Build canonical ledger payload for all new entries.
+
+    All keys are always present to keep the ledger schema uniform.
+    """
+    canonical_status = review_action if event_type == "HUMAN_REVIEW" else status
+
+    return {
+        "event_type": event_type,
+        "decision_id": decision_id,
+        "client_id": client_id,
+        "module": module,
+        "status": canonical_status,
+        "severity": severity,
+        "risk_score": risk_score,
+        "decision_code": decision_code,
+        "review_action": review_action,
+        "reviewer_id": reviewer_id,
+        "reason": reason,
+        "metadata": metadata or {},
+    }
+
+
 def append_ledger_entry(data: dict) -> dict:
     """Append a new entry to the ledger with chaining."""
     os.makedirs(os.path.dirname(LEDGER_PATH), exist_ok=True)

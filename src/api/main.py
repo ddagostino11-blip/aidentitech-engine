@@ -5,7 +5,7 @@ import uuid
 import importlib
 
 from core.config_loader import load_config
-from core.ledger_chain import append_ledger_entry
+from core.ledger_chain import append_ledger_entry, build_canonical_ledger_data
 from src.modules.registry import AVAILABLE_MODULES
 from src.core.module_router import run_module
 
@@ -154,18 +154,26 @@ def validate(
         decision_id = str(uuid.uuid4())
         decision_timestamp = datetime.now(timezone.utc).isoformat()
 
-        # ledger event ricco
-        ledger_entry = append_ledger_entry({
-            "event_type": "ENGINE_DECISION",
-            "client_id": client_id,
-            "module": request.module,
-            "decision_id": decision_id,
-            "status": decision.get("status"),
-            "severity": decision.get("severity"),
-            "risk_score": decision.get("risk_score"),
-            "decision_code": decision.get("decision_code"),
-            "decision": decision.get("status"),
-        })
+        # ledger event canonico
+        ledger_entry = append_ledger_entry(
+            build_canonical_ledger_data(
+                event_type="ENGINE_DECISION",
+                decision_id=decision_id,
+                client_id=client_id,
+                module=request.module,
+                status=decision.get("status"),
+                severity=decision.get("severity"),
+                risk_score=decision.get("risk_score"),
+                decision_code=decision.get("decision_code"),
+                metadata={
+                    "policy_profile": decision.get("policy_profile"),
+                    "review_required": decision.get("review_required"),
+                    "blocking_issues_count": decision.get("blocking_issues_count"),
+                    "regulatory_impact": decision.get("regulatory_impact"),
+                    "batch_disposition": decision.get("batch_disposition"),
+                },
+            )
+        )
 
         # response finale
         response = {
