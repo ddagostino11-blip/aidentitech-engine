@@ -13,6 +13,25 @@ ALLOWED_EVENT_TYPES = {
     EVENT_TYPE_HUMAN_REVIEW,
 }
 
+ALLOWED_DECISION_STATUSES = {
+    "APPROVED",
+    "REJECTED",
+    "WARNING",
+    "PENDING",
+}
+
+ALLOWED_REVIEW_ACTIONS = {
+    "APPROVED",
+    "REJECTED",
+}
+
+ALLOWED_SEVERITIES = {
+    "LOW",
+    "MEDIUM",
+    "HIGH",
+    "CRITICAL",
+}
+
 CANONICAL_LEDGER_KEYS = [
     "event_type",
     "decision_id",
@@ -53,6 +72,20 @@ def _get_last_hash() -> str:
         return last_record.get("hash", "GENESIS")
 
 
+def _normalize_upper(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise ValueError("Expected string value")
+
+    value = value.strip()
+    if not value:
+        return None
+
+    return value.upper()
+
+
 def _validate_event_type(event_type: str) -> None:
     if event_type not in ALLOWED_EVENT_TYPES:
         raise ValueError(
@@ -69,6 +102,51 @@ def _normalize_metadata(metadata: dict | None) -> dict:
         raise ValueError("metadata must be a dict")
 
     return metadata
+
+
+def _normalize_and_validate_status(status: str | None) -> str | None:
+    normalized = _normalize_upper(status)
+
+    if normalized is None:
+        return None
+
+    if normalized not in ALLOWED_DECISION_STATUSES:
+        raise ValueError(
+            f"Invalid status: {normalized}. "
+            f"Allowed values: {sorted(ALLOWED_DECISION_STATUSES)}"
+        )
+
+    return normalized
+
+
+def _normalize_and_validate_review_action(review_action: str | None) -> str | None:
+    normalized = _normalize_upper(review_action)
+
+    if normalized is None:
+        return None
+
+    if normalized not in ALLOWED_REVIEW_ACTIONS:
+        raise ValueError(
+            f"Invalid review_action: {normalized}. "
+            f"Allowed values: {sorted(ALLOWED_REVIEW_ACTIONS)}"
+        )
+
+    return normalized
+
+
+def _normalize_and_validate_severity(severity: str | None) -> str | None:
+    normalized = _normalize_upper(severity)
+
+    if normalized is None:
+        return None
+
+    if normalized not in ALLOWED_SEVERITIES:
+        raise ValueError(
+            f"Invalid severity: {normalized}. "
+            f"Allowed values: {sorted(ALLOWED_SEVERITIES)}"
+        )
+
+    return normalized
 
 
 def build_canonical_ledger_data(
@@ -93,6 +171,33 @@ def build_canonical_ledger_data(
 
     _validate_event_type(event_type)
 
+    status = _normalize_and_validate_status(status)
+    review_action = _normalize_and_validate_review_action(review_action)
+    severity = _normalize_and_validate_severity(severity)
+    metadata = _normalize_metadata(metadata)
+
+    if event_type == EVENT_TYPE_HUMAN_REVIEW:
+        if not decision_id:
+            raise ValueError("decision_id required for HUMAN_REVIEW")
+        if not client_id:
+            raise ValueError("client_id required for HUMAN_REVIEW")
+        if not module:
+            raise ValueError("module required for HUMAN_REVIEW")
+        if not review_action:
+            raise ValueError("review_action required for HUMAN_REVIEW")
+        if not reviewer_id:
+            raise ValueError("reviewer_id required for HUMAN_REVIEW")
+
+    if event_type == EVENT_TYPE_ENGINE_DECISION:
+        if not decision_id:
+            raise ValueError("decision_id required for ENGINE_DECISION")
+        if not client_id:
+            raise ValueError("client_id required for ENGINE_DECISION")
+        if not module:
+            raise ValueError("module required for ENGINE_DECISION")
+        if not status:
+            raise ValueError("status required for ENGINE_DECISION")
+
     canonical_status = review_action if event_type == EVENT_TYPE_HUMAN_REVIEW else status
 
     return {
@@ -107,7 +212,7 @@ def build_canonical_ledger_data(
         "review_action": review_action,
         "reviewer_id": reviewer_id,
         "reason": reason,
-        "metadata": _normalize_metadata(metadata),
+        "metadata": metadata,
     }
 
 
@@ -131,9 +236,14 @@ def _is_canonical_ledger_data(data: dict) -> bool:
 
 def append_ledger_entry(data: dict) -> dict:
     """Append a new entry to the ledger with chaining."""
+    if not _is_canonical_ledger_data(data):
+        raise ValueError("append_ledger_entry requires canonical ledger data")
+
     os.makedirs(os.path.dirname(LEDGER_PATH), exist_ok=True)
 
     prev_hash = _get_last_hash()
+    if not prev_hash:
+        raise ValueError("Invalid previous hash state")
 
     entry = {
         "timestamp": _utc_now_iso(),

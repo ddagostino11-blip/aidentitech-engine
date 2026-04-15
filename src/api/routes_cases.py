@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -20,7 +22,7 @@ router = APIRouter(tags=["cases"])
 
 
 class ReviewRequest(BaseModel):
-    action: str  # APPROVED | REJECTED
+    action: Literal["APPROVED", "REJECTED"]
     reason: str | None = None
 
 
@@ -353,12 +355,6 @@ def review_case(
     reviewer_id = auth.get("client_id")
 
     action = request.action.upper()
-
-    if action not in {"APPROVED", "REJECTED"}:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid action. Use APPROVED or REJECTED"
-        )
 
     ledger_entry = append_ledger_entry(
         build_canonical_ledger_data(
