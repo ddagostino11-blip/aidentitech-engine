@@ -15,6 +15,10 @@ router = APIRouter(tags=["admin"])
 
 LEDGER_PATH = "runtime/logs/ledger_chain.jsonl"
 
+CANONICAL_EVENT_TYPES = {"ENGINE_DECISION", "HUMAN_REVIEW"}
+ENGINE_EVENT_TYPES = {"ENGINE_DECISION", "LEGACY_ENGINE_DECISION"}
+REVIEW_EVENT_TYPES = {"HUMAN_REVIEW"}
+
 
 class RevokeApiKeyRequest(BaseModel):
     api_key: str
@@ -88,92 +92,119 @@ def _filter_entries_for_auth(entries: list[dict], auth: dict) -> list[dict]:
     return [entry for entry in entries if _entry_belongs_to_auth(entry, auth)]
 
 
-def _normalize_case_ledger_entry(entry: dict) -> dict | None:
+def _base_normalized_entry(entry: dict) -> dict:
     data = entry.get("data", {})
-    timestamp = entry.get("timestamp")
-    ledger_hash = entry.get("hash")
-    prev_hash = entry.get("prev_hash")
 
+    return {
+        "timestamp": entry.get("timestamp"),
+        "event_type": None,
+        "decision_id": data.get("decision_id"),
+        "client_id": data.get("client_id"),
+        "module": data.get("module"),
+        "status": None,
+        "severity": None,
+        "risk_score": None,
+        "decision_code": None,
+        "review_action": None,
+        "reviewer_id": None,
+        "reason": None,
+        "ledger_hash": entry.get("hash"),
+        "prev_hash": entry.get("prev_hash"),
+        "source_format": "unknown",
+        "raw_event_type": data.get("event_type"),
+    }
+
+
+def _normalize_canonical_entry(entry: dict) -> dict | None:
+    data = entry.get("data", {})
     event_type = data.get("event_type")
 
+    if event_type not in CANONICAL_EVENT_TYPES:
+        return None
+
+    normalized = _base_normalized_entry(entry)
+
     if event_type == "ENGINE_DECISION":
-        return {
-            "timestamp": timestamp,
+        normalized.update({
             "event_type": "ENGINE_DECISION",
-            "decision_id": data.get("decision_id"),
-            "client_id": data.get("client_id"),
-            "module": data.get("module"),
             "status": data.get("status"),
             "severity": data.get("severity"),
             "risk_score": data.get("risk_score"),
             "decision_code": data.get("decision_code"),
-            "review_action": None,
-            "reviewer_id": None,
-            "reason": None,
-            "ledger_hash": ledger_hash,
-            "prev_hash": prev_hash,
             "source_format": "canonical",
-        }
+        })
+        return normalized
 
     if event_type == "HUMAN_REVIEW":
-        return {
-            "timestamp": timestamp,
+        normalized.update({
             "event_type": "HUMAN_REVIEW",
-            "decision_id": data.get("decision_id"),
-            "client_id": data.get("client_id"),
-            "module": data.get("module"),
-            "status": data.get("review_action"),
-            "severity": None,
-            "risk_score": None,
-            "decision_code": None,
+            "status": data.get("review_action") or data.get("status"),
             "review_action": data.get("review_action"),
             "reviewer_id": data.get("reviewer_id"),
             "reason": data.get("reason"),
-            "ledger_hash": ledger_hash,
-            "prev_hash": prev_hash,
             "source_format": "canonical",
-        }
+        })
+        return normalized
 
+    return None
+
+
+def _normalize_legacy_entry(entry: dict) -> dict | None:
+    data = entry.get("data", {})
     decision = data.get("decision")
+
+    normalized = _base_normalized_entry(entry)
+
     if isinstance(decision, dict):
-        return {
-            "timestamp": timestamp,
+        normalized.update({
             "event_type": "LEGACY_ENGINE_DECISION",
-            "decision_id": data.get("decision_id"),
-            "client_id": data.get("client_id"),
-            "module": data.get("module"),
             "status": decision.get("status"),
             "severity": decision.get("severity"),
             "risk_score": decision.get("risk_score"),
             "decision_code": decision.get("decision_code"),
-            "review_action": None,
-            "reviewer_id": None,
-            "reason": None,
-            "ledger_hash": ledger_hash,
-            "prev_hash": prev_hash,
             "source_format": "legacy_dict",
-        }
+        })
+        return normalized
 
     if isinstance(decision, str):
-        return {
-            "timestamp": timestamp,
+        normalized.update({
             "event_type": "LEGACY_ENGINE_DECISION",
-            "decision_id": data.get("decision_id"),
-            "client_id": data.get("client_id"),
-            "module": data.get("module"),
             "status": decision,
-            "severity": None,
-            "risk_score": None,
-            "decision_code": None,
-            "review_action": None,
-            "reviewer_id": None,
-            "reason": None,
-            "ledger_hash": ledger_hash,
-            "prev_hash": prev_hash,
             "source_format": "legacy_string",
-        }
+        })
+        return normalized
+
+    # caso legacy incompleto o ambiguo: non lo buttiamo via
+    if any(
+        key in data
+        for key in ["client_id", "module", "decision_id", "status", "severity", "risk_score"]
+    ):
+        normalized.update({
+            "event_type": "LEGACY_UNKNOWN",
+            "status": data.get("status"),
+            "severity": data.get("severity"),
+            "risk_score": data.get("risk_score"),
+            "decision_code": data.get("decision_code"),
+            "source_format": "legacy_unknown",
+        })
+        return normalized
 
     return None
+
+
+def _normalize_case_ledger_entry(entry: dict) -> dict | None:
+    return _normalize_canonical_entry(entry) or _normalize_legacy_entry(entry)
+
+
+def _normalize_entries(entries: list[dict]) -> list[dict]:
+    normalized_entries = []
+
+    for entry in entries:
+        normalized = _normalize_case_ledger_entry(entry)
+        if normalized:
+            normalized_entries.append(normalized)
+
+    return normalized_entries
 
 
 def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> dict:
@@ -184,21 +215,22 @@ def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> d
 
     engine_entries = [
         e for e in ordered
-        if e.get("event_type") in {"ENGINE_DECISION", "LEGACY_ENGINE_DECISION"}
+        if e.get("event_type") in ENGINE_EVENT_TYPES
     ]
     review_entries = [
         e for e in ordered
-        if e.get("event_type") == "HUMAN_REVIEW"
+        if e.get("event_type") in REVIEW_EVENT_TYPES
     ]
 
     latest_engine = engine_entries[-1] if engine_entries else None
     latest_review = review_entries[-1] if review_entries else None
+    latest_event = ordered[-1]
 
     engine_status = latest_engine.get("status") if latest_engine else None
     latest_review_action = latest_review.get("review_action") if latest_review else None
-    final_status = latest_review_action or engine_status
+    final_status = latest_review_action or engine_status or latest_event.get("status")
 
-    base_entry = latest_review or latest_engine or ordered[-1]
+    base_entry = latest_review or latest_engine or latest_event
 
     return {
         "decision_id": decision_id,
@@ -210,9 +242,10 @@ def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> d
         "latest_review_action": latest_review_action,
         "review_count": len(review_entries),
         "events_count": len(ordered),
-        "latest_event_type": ordered[-1].get("event_type"),
-        "latest_event_timestamp": ordered[-1].get("timestamp"),
-        "latest_ledger_hash": ordered[-1].get("ledger_hash"),
+        "latest_event_type": latest_event.get("event_type"),
+        "latest_event_timestamp": latest_event.get("timestamp"),
+        "latest_ledger_hash": latest_event.get("ledger_hash"),
+        "latest_source_format": latest_event.get("source_format"),
     }
 
 
@@ -311,12 +344,7 @@ def get_ledger_by_case(
 
     entries = get_ledger_entries_by_decision_id(decision_id)
     scoped_entries = _filter_entries_for_auth(entries, auth)
-
-    normalized_entries = []
-    for entry in scoped_entries:
-        normalized = _normalize_case_ledger_entry(entry)
-        if normalized:
-            normalized_entries.append(normalized)
+    normalized_entries = _normalize_entries(scoped_entries)
 
     if not normalized_entries:
         raise HTTPException(status_code=404, detail="Ledger entries not found for case")
@@ -339,13 +367,7 @@ def get_ledger_summary(
 
     entries = get_ledger_entries_by_decision_id(decision_id)
     scoped_entries = _filter_entries_for_auth(entries, auth)
-
-    normalized_entries = []
-    for entry in scoped_entries:
-        normalized = _normalize_case_ledger_entry(entry)
-        if normalized:
-            normalized_entries.append(normalized)
-
+    normalized_entries = _normalize_entries(scoped_entries)
     summary = _build_ledger_summary(normalized_entries, decision_id)
 
     return {

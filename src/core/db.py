@@ -16,6 +16,10 @@ from src.core.ledger_chain import get_ledger_entries_by_decision_id
 SQLITE_DB_PATH = "runtime/cases.db"
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+CANONICAL_EVENT_TYPES = {"ENGINE_DECISION", "HUMAN_REVIEW"}
+ENGINE_EVENT_TYPES = {"ENGINE_DECISION", "LEGACY_ENGINE_DECISION", "LEGACY_UNKNOWN"}
+REVIEW_EVENT_TYPES = {"HUMAN_REVIEW"}
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -915,33 +919,121 @@ def get_case_timeline(decision_id: str):
     }
 
 
-def _build_timeline_event_from_ledger_entry(entry: dict):
+def _base_normalized_ledger_entry(entry: dict) -> dict:
+    data = entry.get("data", {})
+
+    return {
+        "timestamp": entry.get("timestamp"),
+        "event_type": None,
+        "decision_id": data.get("decision_id"),
+        "client_id": data.get("client_id"),
+        "module": data.get("module"),
+        "status": None,
+        "severity": None,
+        "risk_score": None,
+        "decision_code": None,
+        "review_action": None,
+        "reviewer_id": None,
+        "reason": None,
+        "ledger_hash": entry.get("hash"),
+        "source_format": "unknown",
+        "raw_event_type": data.get("event_type"),
+    }
+
+
+def _normalize_ledger_entry(entry: dict) -> dict | None:
     data = entry.get("data", {})
     event_type = data.get("event_type")
 
+    normalized = _base_normalized_ledger_entry(entry)
+
+    if event_type == "ENGINE_DECISION":
+        normalized.update({
+            "event_type": "ENGINE_DECISION",
+            "status": data.get("status"),
+            "severity": data.get("severity"),
+            "risk_score": data.get("risk_score"),
+            "decision_code": data.get("decision_code"),
+            "source_format": "canonical",
+        })
+        return normalized
+
     if event_type == "HUMAN_REVIEW":
+        normalized.update({
+            "event_type": "HUMAN_REVIEW",
+            "status": data.get("review_action") or data.get("status"),
+            "review_action": data.get("review_action"),
+            "reviewer_id": data.get("reviewer_id"),
+            "reason": data.get("reason"),
+            "source_format": "canonical",
+        })
+        return normalized
+
+    decision = data.get("decision")
+
+    if isinstance(decision, dict):
+        normalized.update({
+            "event_type": "LEGACY_ENGINE_DECISION",
+            "status": decision.get("status"),
+            "severity": decision.get("severity"),
+            "risk_score": decision.get("risk_score"),
+            "decision_code": decision.get("decision_code"),
+            "source_format": "legacy_dict",
+        })
+        return normalized
+
+    if isinstance(decision, str):
+        normalized.update({
+            "event_type": "LEGACY_ENGINE_DECISION",
+            "status": decision,
+            "source_format": "legacy_string",
+        })
+        return normalized
+
+    if any(
+        key in data
+        for key in ["client_id", "module", "decision_id", "status", "severity", "risk_score"]
+    ):
+        normalized.update({
+            "event_type": "LEGACY_UNKNOWN",
+            "status": data.get("status"),
+            "severity": data.get("severity"),
+            "risk_score": data.get("risk_score"),
+            "decision_code": data.get("decision_code"),
+            "source_format": "legacy_unknown",
+        })
+        return normalized
+
+    return None
+
+
+def _build_timeline_event_from_normalized_entry(normalized: dict) -> dict | None:
+    event_type = normalized.get("event_type")
+
+    if event_type in REVIEW_EVENT_TYPES:
         return {
             "type": "REVIEW",
-            "timestamp": entry.get("timestamp"),
+            "timestamp": normalized.get("timestamp"),
             "data": {
-                "action": data.get("review_action"),
-                "reason": data.get("reason"),
-                "reviewer_id": data.get("reviewer_id"),
-                "ledger_hash": entry.get("hash"),
+                "action": normalized.get("review_action"),
+                "reason": normalized.get("reason"),
+                "reviewer_id": normalized.get("reviewer_id"),
+                "ledger_hash": normalized.get("ledger_hash"),
+                "source_format": normalized.get("source_format"),
             }
         }
 
-    # fallback: vecchie decisioni senza event_type esplicito
-    if data.get("decision_id"):
+    if event_type in ENGINE_EVENT_TYPES:
         return {
             "type": "DECISION",
-            "timestamp": entry.get("timestamp"),
+            "timestamp": normalized.get("timestamp"),
             "data": {
-                "status": data.get("status") or data.get("decision"),
-                "severity": data.get("severity"),
-                "risk_score": data.get("risk_score"),
-                "decision_code": data.get("decision_code"),
-                "ledger_hash": entry.get("hash"),
+                "status": normalized.get("status"),
+                "severity": normalized.get("severity"),
+                "risk_score": normalized.get("risk_score"),
+                "decision_code": normalized.get("decision_code"),
+                "ledger_hash": normalized.get("ledger_hash"),
+                "source_format": normalized.get("source_format"),
             }
         }
 
@@ -957,7 +1049,11 @@ def get_case_timeline_from_ledger(decision_id: str):
     timeline = []
 
     for entry in entries:
-        event = _build_timeline_event_from_ledger_entry(entry)
+        normalized = _normalize_ledger_entry(entry)
+        if not normalized:
+            continue
+
+        event = _build_timeline_event_from_normalized_entry(normalized)
         if event:
             timeline.append(event)
 
