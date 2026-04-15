@@ -268,14 +268,6 @@ def review_case(
             detail="Invalid action. Use APPROVED or REJECTED"
         )
 
-    insert_review_action(
-        decision_id=decision_id,
-        client_id=client_id,
-        reviewer_id=client_id,
-        action=action,
-        reason=request.reason,
-    )
-
     ledger_entry = append_ledger_entry({
         "client_id": client_id,
         "module": case.get("module"),
@@ -285,6 +277,15 @@ def review_case(
         "reviewer_id": client_id,
         "reason": request.reason,
     })
+
+    insert_review_action(
+        decision_id=decision_id,
+        client_id=client_id,
+        reviewer_id=client_id,
+        action=action,
+        reason=request.reason,
+        ledger_hash=ledger_entry.get("hash"),
+    )
 
     return {
         "decision_id": decision_id,

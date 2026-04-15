@@ -71,6 +71,17 @@ def _column_exists_sqlite(cursor, table_name: str, column_name: str) -> bool:
     return any(col["name"] == column_name for col in columns)
 
 
+def _column_exists_postgres(cursor, table_name: str, column_name: str) -> bool:
+    cursor.execute("""
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = %s
+          AND column_name = %s
+        LIMIT 1
+    """, (table_name, column_name))
+    return cursor.fetchone() is not None
+
+
 def _parse_ts(ts: str | None):
     if not ts:
         return datetime.min.replace(tzinfo=timezone.utc)
@@ -144,9 +155,16 @@ def init_db():
                 reviewer_id TEXT,
                 action TEXT,
                 reason TEXT,
+                ledger_hash TEXT,
                 created_at TIMESTAMPTZ
             )
         """)
+
+        if not _column_exists_postgres(cursor, "review_actions", "ledger_hash"):
+            cursor.execute("""
+                ALTER TABLE review_actions
+                ADD COLUMN ledger_hash TEXT
+            """)
 
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_review_actions_decision_id
@@ -218,9 +236,16 @@ def init_db():
             reviewer_id TEXT,
             action TEXT,
             reason TEXT,
+            ledger_hash TEXT,
             created_at TEXT
         )
     """)
+
+    if not _column_exists_sqlite(cursor, "review_actions", "ledger_hash"):
+        cursor.execute("""
+            ALTER TABLE review_actions
+            ADD COLUMN ledger_hash TEXT
+        """)
 
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_review_actions_decision_id
@@ -624,7 +649,7 @@ def get_latest_review_by_decision_id(decision_id: str):
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT id, decision_id, client_id, reviewer_id,
-                   action, reason, created_at
+                   action, reason, ledger_hash, created_at
             FROM review_actions
             WHERE decision_id = %s
             ORDER BY id DESC
@@ -634,7 +659,7 @@ def get_latest_review_by_decision_id(decision_id: str):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, decision_id, client_id, reviewer_id,
-                   action, reason, created_at
+                   action, reason, ledger_hash, created_at
             FROM review_actions
             WHERE decision_id = ?
             ORDER BY id DESC
@@ -736,6 +761,7 @@ def insert_review_action(
     reviewer_id: str,
     action: str,
     reason: str | None = None,
+    ledger_hash: str | None = None,
 ):
     conn = get_connection()
     created_at = _utc_now_iso()
@@ -749,15 +775,17 @@ def insert_review_action(
                 reviewer_id,
                 action,
                 reason,
+                ledger_hash,
                 created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
             decision_id,
             client_id,
             reviewer_id,
             action,
             reason,
+            ledger_hash,
             created_at,
         ))
     else:
@@ -769,15 +797,17 @@ def insert_review_action(
                 reviewer_id,
                 action,
                 reason,
+                ledger_hash,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             decision_id,
             client_id,
             reviewer_id,
             action,
             reason,
+            ledger_hash,
             created_at,
         ))
 
@@ -792,7 +822,7 @@ def get_reviews_by_decision_id(decision_id: str):
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT id, decision_id, client_id, reviewer_id,
-                   action, reason, created_at
+                   action, reason, ledger_hash, created_at
             FROM review_actions
             WHERE decision_id = %s
             ORDER BY id DESC
@@ -801,7 +831,7 @@ def get_reviews_by_decision_id(decision_id: str):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, decision_id, client_id, reviewer_id,
-                   action, reason, created_at
+                   action, reason, ledger_hash, created_at
             FROM review_actions
             WHERE decision_id = ?
             ORDER BY id DESC
@@ -833,6 +863,7 @@ def get_case_timeline(decision_id: str):
             "severity": case.get("severity"),
             "risk_score": case.get("risk_score"),
             "decision_code": case.get("decision_code"),
+            "ledger_hash": case.get("ledger_hash"),
         }
     })
 
@@ -844,6 +875,7 @@ def get_case_timeline(decision_id: str):
                 "action": review.get("action"),
                 "reason": review.get("reason"),
                 "reviewer_id": review.get("reviewer_id"),
+                "ledger_hash": review.get("ledger_hash"),
             }
         })
 
