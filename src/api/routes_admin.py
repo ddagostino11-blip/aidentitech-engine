@@ -61,7 +61,6 @@ def _normalize_case_ledger_entry(entry: dict) -> dict | None:
 
     event_type = data.get("event_type")
 
-    # Nuovo formato: decisione engine ricca
     if event_type == "ENGINE_DECISION":
         return {
             "timestamp": timestamp,
@@ -81,7 +80,6 @@ def _normalize_case_ledger_entry(entry: dict) -> dict | None:
             "source_format": "canonical",
         }
 
-    # Nuovo formato: review umana
     if event_type == "HUMAN_REVIEW":
         return {
             "timestamp": timestamp,
@@ -101,7 +99,6 @@ def _normalize_case_ledger_entry(entry: dict) -> dict | None:
             "source_format": "canonical",
         }
 
-    # Legacy: decision payload ricco annidato in data["decision"]
     decision = data.get("decision")
     if isinstance(decision, dict):
         return {
@@ -122,7 +119,6 @@ def _normalize_case_ledger_entry(entry: dict) -> dict | None:
             "source_format": "legacy_dict",
         }
 
-    # Legacy: decision semplice stringa
     if isinstance(decision, str):
         return {
             "timestamp": timestamp,
@@ -143,6 +139,46 @@ def _normalize_case_ledger_entry(entry: dict) -> dict | None:
         }
 
     return None
+
+
+def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> dict:
+    if not normalized_entries:
+        raise HTTPException(status_code=404, detail="Ledger entries not found for case")
+
+    ordered = sorted(normalized_entries, key=lambda e: e.get("timestamp") or "")
+
+    engine_entries = [
+        e for e in ordered
+        if e.get("event_type") in {"ENGINE_DECISION", "LEGACY_ENGINE_DECISION"}
+    ]
+    review_entries = [
+        e for e in ordered
+        if e.get("event_type") == "HUMAN_REVIEW"
+    ]
+
+    latest_engine = engine_entries[-1] if engine_entries else None
+    latest_review = review_entries[-1] if review_entries else None
+
+    engine_status = latest_engine.get("status") if latest_engine else None
+    latest_review_action = latest_review.get("review_action") if latest_review else None
+    final_status = latest_review_action or engine_status
+
+    base_entry = latest_review or latest_engine or ordered[-1]
+
+    return {
+        "decision_id": decision_id,
+        "client_id": base_entry.get("client_id"),
+        "module": base_entry.get("module"),
+        "engine_status": engine_status,
+        "final_status": final_status,
+        "has_human_review": len(review_entries) > 0,
+        "latest_review_action": latest_review_action,
+        "review_count": len(review_entries),
+        "events_count": len(ordered),
+        "latest_event_type": ordered[-1].get("event_type"),
+        "latest_event_timestamp": ordered[-1].get("timestamp"),
+        "latest_ledger_hash": ordered[-1].get("ledger_hash"),
+    }
 
 
 @router.get("/admin/api-keys")
@@ -229,4 +265,27 @@ def get_ledger_by_case(
         "decision_id": decision_id,
         "entries_count": len(normalized_entries),
         "entries": normalized_entries,
+    }
+
+
+@router.get("/admin/ledger/summary/{decision_id}")
+def get_ledger_summary(
+    decision_id: str,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    admin_client = _require_admin(x_api_key)
+
+    entries = get_ledger_entries_by_decision_id(decision_id)
+
+    normalized_entries = []
+    for entry in entries:
+        normalized = _normalize_case_ledger_entry(entry)
+        if normalized:
+            normalized_entries.append(normalized)
+
+    summary = _build_ledger_summary(normalized_entries, decision_id)
+
+    return {
+        "requested_by": admin_client,
+        **summary,
     }
