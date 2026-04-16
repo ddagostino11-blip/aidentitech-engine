@@ -11,12 +11,14 @@ from src.core.ledger_chain import (
     get_ledger_entries_by_decision_id,
     append_ledger_checkpoint,
     get_latest_ledger_checkpoint,
+    export_latest_checkpoint_anchor,
+    prepare_latest_public_timestamp_receipt,
+    get_latest_public_timestamp_receipt,
 )
 
 router = APIRouter(tags=["admin"])
 
 LEDGER_PATH = "runtime/logs/ledger_chain.jsonl"
-ANCHORS_DIR = "runtime/anchors"
 
 CANONICAL_EVENT_TYPES = {"ENGINE_DECISION", "HUMAN_REVIEW", "ADMIN_OVERRIDE"}
 ENGINE_EVENT_TYPES = {"ENGINE_DECISION", "LEGACY_ENGINE_DECISION"}
@@ -273,28 +275,6 @@ def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> d
     }
 
 
-def _export_latest_checkpoint_anchor() -> dict:
-    checkpoint = get_latest_ledger_checkpoint()
-
-    if not checkpoint:
-        raise HTTPException(status_code=404, detail="No ledger checkpoint found")
-
-    os.makedirs(ANCHORS_DIR, exist_ok=True)
-
-    safe_ts = checkpoint["created_at"].replace(":", "-").replace(".", "-")
-    file_name = f"ledger_anchor_{safe_ts}.json"
-    file_path = os.path.join(ANCHORS_DIR, file_name)
-
-    with open(file_path, "w") as f:
-        json.dump(checkpoint, f, indent=2)
-
-    return {
-        "status": "EXPORTED",
-        "file_path": file_path,
-        "checkpoint": checkpoint,
-    }
-
-
 @router.get("/admin/api-keys")
 def get_api_keys(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
@@ -403,12 +383,50 @@ def export_latest_checkpoint(
 ):
     auth = _require_super_admin(x_api_key)
 
-    result = _export_latest_checkpoint_anchor()
+    try:
+        result = export_latest_checkpoint_anchor()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
     return {
         "requested_by": auth.get("client_id"),
         "requested_role": auth.get("role"),
         **result,
+    }
+
+
+@router.post("/admin/ledger/checkpoints/public-timestamp/prepare-latest")
+def prepare_latest_public_timestamp(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    auth = _require_super_admin(x_api_key)
+
+    try:
+        result = prepare_latest_public_timestamp_receipt()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return {
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
+        **result,
+    }
+
+
+@router.get("/admin/ledger/checkpoints/public-timestamp/latest")
+def get_latest_public_timestamp(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    auth = _require_super_admin(x_api_key)
+
+    receipt = get_latest_public_timestamp_receipt()
+    if not receipt:
+        raise HTTPException(status_code=404, detail="No public timestamp receipt found")
+
+    return {
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
+        "receipt": receipt,
     }
 
 
