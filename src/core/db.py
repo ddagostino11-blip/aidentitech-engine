@@ -16,9 +16,11 @@ from src.core.ledger_chain import get_ledger_entries_by_decision_id
 SQLITE_DB_PATH = "runtime/cases.db"
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-CANONICAL_EVENT_TYPES = {"ENGINE_DECISION", "HUMAN_REVIEW"}
+CANONICAL_EVENT_TYPES = {"ENGINE_DECISION", "HUMAN_REVIEW", "ADMIN_OVERRIDE"}
 ENGINE_EVENT_TYPES = {"ENGINE_DECISION", "LEGACY_ENGINE_DECISION", "LEGACY_UNKNOWN"}
 REVIEW_EVENT_TYPES = {"HUMAN_REVIEW"}
+OVERRIDE_EVENT_TYPES = {"ADMIN_OVERRIDE"}
+STATE_CHANGE_EVENT_TYPES = REVIEW_EVENT_TYPES | OVERRIDE_EVENT_TYPES
 
 
 def _utc_now_iso() -> str:
@@ -921,6 +923,7 @@ def get_case_timeline(decision_id: str):
 
 def _base_normalized_ledger_entry(entry: dict) -> dict:
     data = entry.get("data", {})
+    metadata = data.get("metadata") or {}
 
     return {
         "timestamp": entry.get("timestamp"),
@@ -938,6 +941,8 @@ def _base_normalized_ledger_entry(entry: dict) -> dict:
         "ledger_hash": entry.get("hash"),
         "source_format": "unknown",
         "raw_event_type": data.get("event_type"),
+        "override_type": metadata.get("override_type"),
+        "previous_status": metadata.get("previous_status"),
     }
 
 
@@ -961,6 +966,17 @@ def _normalize_ledger_entry(entry: dict) -> dict | None:
     if event_type == "HUMAN_REVIEW":
         normalized.update({
             "event_type": "HUMAN_REVIEW",
+            "status": data.get("review_action") or data.get("status"),
+            "review_action": data.get("review_action"),
+            "reviewer_id": data.get("reviewer_id"),
+            "reason": data.get("reason"),
+            "source_format": "canonical",
+        })
+        return normalized
+
+    if event_type == "ADMIN_OVERRIDE":
+        normalized.update({
+            "event_type": "ADMIN_OVERRIDE",
             "status": data.get("review_action") or data.get("status"),
             "review_action": data.get("review_action"),
             "reviewer_id": data.get("reviewer_id"),
@@ -1020,6 +1036,21 @@ def _build_timeline_event_from_normalized_entry(normalized: dict) -> dict | None
                 "reviewer_id": normalized.get("reviewer_id"),
                 "ledger_hash": normalized.get("ledger_hash"),
                 "source_format": normalized.get("source_format"),
+            }
+        }
+
+    if event_type in OVERRIDE_EVENT_TYPES:
+        return {
+            "type": "OVERRIDE",
+            "timestamp": normalized.get("timestamp"),
+            "data": {
+                "action": normalized.get("review_action"),
+                "reason": normalized.get("reason"),
+                "reviewer_id": normalized.get("reviewer_id"),
+                "ledger_hash": normalized.get("ledger_hash"),
+                "source_format": normalized.get("source_format"),
+                "override_type": normalized.get("override_type"),
+                "previous_status": normalized.get("previous_status"),
             }
         }
 

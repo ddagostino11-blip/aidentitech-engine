@@ -26,6 +26,12 @@ class ReviewRequest(BaseModel):
     reason: str | None = None
 
 
+class AdminOverrideRequest(BaseModel):
+    action: Literal["APPROVED", "REJECTED"]
+    reason: str
+    override_type: Literal["BUG", "AUDIT", "MANUAL", "LEGAL", "DATA_FIX"]
+
+
 def _auth_from_key(x_api_key: str | None) -> dict:
     try:
         return get_client_from_api_key(x_api_key)
@@ -45,6 +51,11 @@ def _client_id_from_key(x_api_key: str | None) -> str:
 def _require_reviewer(auth: dict):
     if auth.get("role") != "reviewer":
         raise HTTPException(status_code=403, detail="Reviewer access required")
+
+
+def _require_super_admin(auth: dict):
+    if auth.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
 
 def _load_authorized_case(decision_id: str, x_api_key: str | None):
@@ -69,13 +80,13 @@ def _build_case_summary_response(case: dict, timeline: dict | None) -> dict:
         item for item in timeline_items
         if item.get("type") == "DECISION"
     ]
-    review_events = [
+    state_change_events = [
         item for item in timeline_items
-        if item.get("type") == "REVIEW"
+        if item.get("type") in {"REVIEW", "OVERRIDE"}
     ]
 
     latest_decision = decision_events[-1] if decision_events else None
-    latest_review = review_events[-1] if review_events else None
+    latest_state_change = state_change_events[-1] if state_change_events else None
     latest_event = timeline_items[-1] if timeline_items else None
 
     engine_status = (
@@ -84,8 +95,8 @@ def _build_case_summary_response(case: dict, timeline: dict | None) -> dict:
         else case.get("status")
     )
     latest_review_action = (
-        latest_review.get("data", {}).get("action")
-        if latest_review
+        latest_state_change.get("data", {}).get("action")
+        if latest_state_change
         else None
     )
     final_status = latest_review_action or engine_status
@@ -102,9 +113,11 @@ def _build_case_summary_response(case: dict, timeline: dict | None) -> dict:
         "module": case.get("module"),
         "engine_status": engine_status,
         "final_status": final_status,
-        "has_human_review": len(review_events) > 0,
+        "has_human_review": any(item.get("type") == "REVIEW" for item in state_change_events),
+        "has_admin_override": any(item.get("type") == "OVERRIDE" for item in state_change_events),
         "latest_review_action": latest_review_action,
-        "review_count": len(review_events),
+        "review_count": len([item for item in state_change_events if item.get("type") == "REVIEW"]),
+        "override_count": len([item for item in state_change_events if item.get("type") == "OVERRIDE"]),
         "decision_timestamp": case.get("decision_timestamp"),
         "latest_event_timestamp": latest_event.get("timestamp") if latest_event else case.get("decision_timestamp"),
         "events_count": len(timeline_items),
@@ -353,7 +366,6 @@ def review_case(
 
     client_id = case.get("client_id")
     reviewer_id = auth.get("client_id")
-
     action = request.action.upper()
 
     ledger_entry = append_ledger_entry(
@@ -383,6 +395,85 @@ def review_case(
         "client_id": client_id,
         "review_action": action,
         "reason": request.reason,
+        "status": "RECORDED",
+        "ledger_hash": ledger_entry.get("hash"),
+    }
+
+
+# =========================
+# 8️⃣bis ADMIN OVERRIDE
+# =========================
+@router.post("/cases/{decision_id}/admin-override")
+def admin_override_case(
+    decision_id: str,
+    request: AdminOverrideRequest,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    case, auth = _load_authorized_case(decision_id, x_api_key)
+    _require_super_admin(auth)
+
+    reason = request.reason.strip()
+    if len(reason) < 5:
+        raise HTTPException(status_code=400, detail="Reason must be at least 5 characters")
+
+    client_id = case.get("client_id")
+    reviewer_id = auth.get("client_id")
+    action = request.action.upper()
+
+    timeline = get_case_timeline_from_ledger(decision_id)
+
+    if not timeline:
+        timeline = get_case_timeline(decision_id)
+
+    previous_status = case.get("status")
+
+    if timeline:
+        timeline_items = timeline.get("timeline", [])
+        state_events = [
+            item for item in timeline_items
+            if item.get("type") in {"DECISION", "REVIEW", "OVERRIDE"}
+        ]
+        if state_events:
+            latest_state_event = state_events[-1]
+            latest_data = latest_state_event.get("data", {})
+            previous_status = (
+                latest_data.get("action")
+                or latest_data.get("status")
+                or previous_status
+            )
+
+    ledger_entry = append_ledger_entry(
+        build_canonical_ledger_data(
+            event_type="ADMIN_OVERRIDE",
+            decision_id=decision_id,
+            client_id=client_id,
+            module=case.get("module"),
+            review_action=action,
+            reviewer_id=reviewer_id,
+            reason=reason,
+            metadata={
+                "override_type": request.override_type,
+                "previous_status": previous_status,
+            },
+        )
+    )
+
+    insert_review_action(
+        decision_id=decision_id,
+        client_id=client_id,
+        reviewer_id=reviewer_id,
+        action=action,
+        reason=reason,
+        ledger_hash=ledger_entry.get("hash"),
+    )
+
+    return {
+        "decision_id": decision_id,
+        "client_id": client_id,
+        "override_action": action,
+        "reason": reason,
+        "override_type": request.override_type,
+        "previous_status": previous_status,
         "status": "RECORDED",
         "ledger_hash": ledger_entry.get("hash"),
     }

@@ -7,10 +7,12 @@ LEDGER_PATH = "runtime/logs/ledger_chain.jsonl"
 
 EVENT_TYPE_ENGINE_DECISION = "ENGINE_DECISION"
 EVENT_TYPE_HUMAN_REVIEW = "HUMAN_REVIEW"
+EVENT_TYPE_ADMIN_OVERRIDE = "ADMIN_OVERRIDE"
 
 ALLOWED_EVENT_TYPES = {
     EVENT_TYPE_ENGINE_DECISION,
     EVENT_TYPE_HUMAN_REVIEW,
+    EVENT_TYPE_ADMIN_OVERRIDE,
 }
 
 ALLOWED_DECISION_STATUSES = {
@@ -53,13 +55,11 @@ def _utc_now_iso() -> str:
 
 
 def _hash_record(record: dict) -> str:
-    """Compute SHA256 hash of a record (deterministic)."""
     record_str = json.dumps(record, sort_keys=True).encode()
     return hashlib.sha256(record_str).hexdigest()
 
 
 def _get_last_hash() -> str:
-    """Return hash of last record in ledger, or 'GENESIS' if empty."""
     if not os.path.exists(LEDGER_PATH):
         return "GENESIS"
 
@@ -163,18 +163,26 @@ def build_canonical_ledger_data(
     reason: str | None = None,
     metadata: dict | None = None,
 ) -> dict:
-    """
-    Build canonical ledger payload for all new entries.
-
-    All canonical keys are always present.
-    """
-
     _validate_event_type(event_type)
 
     status = _normalize_and_validate_status(status)
     review_action = _normalize_and_validate_review_action(review_action)
     severity = _normalize_and_validate_severity(severity)
     metadata = _normalize_metadata(metadata)
+
+    # =========================
+    # VALIDAZIONE PER EVENTO
+    # =========================
+
+    if event_type == EVENT_TYPE_ENGINE_DECISION:
+        if not decision_id:
+            raise ValueError("decision_id required for ENGINE_DECISION")
+        if not client_id:
+            raise ValueError("client_id required for ENGINE_DECISION")
+        if not module:
+            raise ValueError("module required for ENGINE_DECISION")
+        if not status:
+            raise ValueError("status required for ENGINE_DECISION")
 
     if event_type == EVENT_TYPE_HUMAN_REVIEW:
         if not decision_id:
@@ -188,17 +196,34 @@ def build_canonical_ledger_data(
         if not reviewer_id:
             raise ValueError("reviewer_id required for HUMAN_REVIEW")
 
-    if event_type == EVENT_TYPE_ENGINE_DECISION:
+    if event_type == EVENT_TYPE_ADMIN_OVERRIDE:
         if not decision_id:
-            raise ValueError("decision_id required for ENGINE_DECISION")
+            raise ValueError("decision_id required for ADMIN_OVERRIDE")
         if not client_id:
-            raise ValueError("client_id required for ENGINE_DECISION")
+            raise ValueError("client_id required for ADMIN_OVERRIDE")
         if not module:
-            raise ValueError("module required for ENGINE_DECISION")
-        if not status:
-            raise ValueError("status required for ENGINE_DECISION")
+            raise ValueError("module required for ADMIN_OVERRIDE")
+        if not review_action:
+            raise ValueError("review_action required for ADMIN_OVERRIDE")
+        if not reviewer_id:
+            raise ValueError("reviewer_id required for ADMIN_OVERRIDE")
+        if not reason or len(reason.strip()) < 5:
+            raise ValueError("reason required for ADMIN_OVERRIDE")
 
-    canonical_status = review_action if event_type == EVENT_TYPE_HUMAN_REVIEW else status
+        # metadata obbligatori enterprise
+        if "override_type" not in metadata:
+            raise ValueError("override_type required in metadata")
+
+        if "previous_status" not in metadata:
+            raise ValueError("previous_status required in metadata")
+
+    # =========================
+
+    canonical_status = (
+        review_action
+        if event_type in {EVENT_TYPE_HUMAN_REVIEW, EVENT_TYPE_ADMIN_OVERRIDE}
+        else status
+    )
 
     return {
         "event_type": event_type,
@@ -235,7 +260,6 @@ def _is_canonical_ledger_data(data: dict) -> bool:
 
 
 def append_ledger_entry(data: dict) -> dict:
-    """Append a new entry to the ledger with chaining."""
     if not _is_canonical_ledger_data(data):
         raise ValueError("append_ledger_entry requires canonical ledger data")
 
@@ -261,7 +285,6 @@ def append_ledger_entry(data: dict) -> dict:
 
 
 def get_ledger_entries() -> list[dict]:
-    """Return all ledger entries in append order."""
     if not os.path.exists(LEDGER_PATH):
         return []
 
@@ -284,7 +307,6 @@ def get_ledger_entries() -> list[dict]:
 
 
 def get_ledger_entries_by_decision_id(decision_id: str) -> list[dict]:
-    """Return all ledger entries whose payload references the given decision_id."""
     entries = get_ledger_entries()
 
     return [
@@ -295,7 +317,6 @@ def get_ledger_entries_by_decision_id(decision_id: str) -> list[dict]:
 
 
 def verify_chain() -> bool:
-    """Verify integrity of the entire ledger chain."""
     if not os.path.exists(LEDGER_PATH):
         return True
 
@@ -307,8 +328,7 @@ def verify_chain() -> bool:
     for line in lines:
         record = json.loads(line)
 
-        expected_prev = record.get("prev_hash")
-        if expected_prev != prev_hash:
+        if record.get("prev_hash") != prev_hash:
             return False
 
         record_copy = {
@@ -317,9 +337,7 @@ def verify_chain() -> bool:
             "prev_hash": record["prev_hash"],
         }
 
-        computed_hash = _hash_record(record_copy)
-
-        if computed_hash != record.get("hash"):
+        if _hash_record(record_copy) != record.get("hash"):
             return False
 
         prev_hash = record["hash"]
