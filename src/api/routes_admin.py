@@ -9,15 +9,19 @@ from src.core.auth import get_client_from_api_key
 from src.core.ledger_chain import (
     verify_chain,
     get_ledger_entries_by_decision_id,
+    append_ledger_checkpoint,
+    get_latest_ledger_checkpoint,
 )
 
 router = APIRouter(tags=["admin"])
 
 LEDGER_PATH = "runtime/logs/ledger_chain.jsonl"
+ANCHORS_DIR = "runtime/anchors"
 
-CANONICAL_EVENT_TYPES = {"ENGINE_DECISION", "HUMAN_REVIEW"}
+CANONICAL_EVENT_TYPES = {"ENGINE_DECISION", "HUMAN_REVIEW", "ADMIN_OVERRIDE"}
 ENGINE_EVENT_TYPES = {"ENGINE_DECISION", "LEGACY_ENGINE_DECISION"}
 REVIEW_EVENT_TYPES = {"HUMAN_REVIEW"}
+OVERRIDE_EVENT_TYPES = {"ADMIN_OVERRIDE"}
 
 
 class RevokeApiKeyRequest(BaseModel):
@@ -94,6 +98,7 @@ def _filter_entries_for_auth(entries: list[dict], auth: dict) -> list[dict]:
 
 def _base_normalized_entry(entry: dict) -> dict:
     data = entry.get("data", {})
+    metadata = data.get("metadata") or {}
 
     return {
         "timestamp": entry.get("timestamp"),
@@ -112,6 +117,8 @@ def _base_normalized_entry(entry: dict) -> dict:
         "prev_hash": entry.get("prev_hash"),
         "source_format": "unknown",
         "raw_event_type": data.get("event_type"),
+        "override_type": metadata.get("override_type"),
+        "previous_status": metadata.get("previous_status"),
     }
 
 
@@ -138,6 +145,17 @@ def _normalize_canonical_entry(entry: dict) -> dict | None:
     if event_type == "HUMAN_REVIEW":
         normalized.update({
             "event_type": "HUMAN_REVIEW",
+            "status": data.get("review_action") or data.get("status"),
+            "review_action": data.get("review_action"),
+            "reviewer_id": data.get("reviewer_id"),
+            "reason": data.get("reason"),
+            "source_format": "canonical",
+        })
+        return normalized
+
+    if event_type == "ADMIN_OVERRIDE":
+        normalized.update({
+            "event_type": "ADMIN_OVERRIDE",
             "status": data.get("review_action") or data.get("status"),
             "review_action": data.get("review_action"),
             "reviewer_id": data.get("reviewer_id"),
@@ -174,7 +192,6 @@ def _normalize_legacy_entry(entry: dict) -> dict | None:
         })
         return normalized
 
-    # caso legacy incompleto o ambiguo: non lo buttiamo via
     if any(
         key in data
         for key in ["client_id", "module", "decision_id", "status", "severity", "risk_score"]
@@ -221,16 +238,21 @@ def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> d
         e for e in ordered
         if e.get("event_type") in REVIEW_EVENT_TYPES
     ]
+    override_entries = [
+        e for e in ordered
+        if e.get("event_type") in OVERRIDE_EVENT_TYPES
+    ]
+    state_change_entries = review_entries + override_entries
 
     latest_engine = engine_entries[-1] if engine_entries else None
-    latest_review = review_entries[-1] if review_entries else None
+    latest_state_change = state_change_entries[-1] if state_change_entries else None
     latest_event = ordered[-1]
 
     engine_status = latest_engine.get("status") if latest_engine else None
-    latest_review_action = latest_review.get("review_action") if latest_review else None
+    latest_review_action = latest_state_change.get("review_action") if latest_state_change else None
     final_status = latest_review_action or engine_status or latest_event.get("status")
 
-    base_entry = latest_review or latest_engine or latest_event
+    base_entry = latest_state_change or latest_engine or latest_event
 
     return {
         "decision_id": decision_id,
@@ -239,13 +261,37 @@ def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> d
         "engine_status": engine_status,
         "final_status": final_status,
         "has_human_review": len(review_entries) > 0,
+        "has_admin_override": len(override_entries) > 0,
         "latest_review_action": latest_review_action,
         "review_count": len(review_entries),
+        "override_count": len(override_entries),
         "events_count": len(ordered),
         "latest_event_type": latest_event.get("event_type"),
         "latest_event_timestamp": latest_event.get("timestamp"),
         "latest_ledger_hash": latest_event.get("ledger_hash"),
         "latest_source_format": latest_event.get("source_format"),
+    }
+
+
+def _export_latest_checkpoint_anchor() -> dict:
+    checkpoint = get_latest_ledger_checkpoint()
+
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail="No ledger checkpoint found")
+
+    os.makedirs(ANCHORS_DIR, exist_ok=True)
+
+    safe_ts = checkpoint["created_at"].replace(":", "-").replace(".", "-")
+    file_name = f"ledger_anchor_{safe_ts}.json"
+    file_path = os.path.join(ANCHORS_DIR, file_name)
+
+    with open(file_path, "w") as f:
+        json.dump(checkpoint, f, indent=2)
+
+    return {
+        "status": "EXPORTED",
+        "file_path": file_path,
+        "checkpoint": checkpoint,
     }
 
 
@@ -315,6 +361,54 @@ def verify_ledger(
         "requested_by": auth.get("client_id"),
         "requested_role": auth.get("role"),
         "ledger_ok": ledger_ok,
+    }
+
+
+@router.post("/admin/ledger/checkpoint")
+def create_ledger_checkpoint(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    auth = _require_super_admin(x_api_key)
+
+    checkpoint = append_ledger_checkpoint()
+
+    return {
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
+        "status": "CREATED",
+        "checkpoint": checkpoint,
+    }
+
+
+@router.get("/admin/ledger/checkpoints/latest")
+def get_latest_checkpoint(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    auth = _require_super_admin(x_api_key)
+
+    checkpoint = get_latest_ledger_checkpoint()
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail="No ledger checkpoint found")
+
+    return {
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
+        "checkpoint": checkpoint,
+    }
+
+
+@router.post("/admin/ledger/checkpoints/export-latest")
+def export_latest_checkpoint(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    auth = _require_super_admin(x_api_key)
+
+    result = _export_latest_checkpoint_anchor()
+
+    return {
+        "requested_by": auth.get("client_id"),
+        "requested_role": auth.get("role"),
+        **result,
     }
 
 
