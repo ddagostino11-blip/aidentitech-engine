@@ -1,9 +1,11 @@
 import json
 import hashlib
 import os
+import uuid
 from datetime import datetime, timezone
 
 LEDGER_PATH = "runtime/logs/ledger_chain.jsonl"
+LEDGER_CHECKPOINTS_PATH = "runtime/logs/ledger_checkpoints.jsonl"
 
 EVENT_TYPE_ENGINE_DECISION = "ENGINE_DECISION"
 EVENT_TYPE_HUMAN_REVIEW = "HUMAN_REVIEW"
@@ -170,10 +172,6 @@ def build_canonical_ledger_data(
     severity = _normalize_and_validate_severity(severity)
     metadata = _normalize_metadata(metadata)
 
-    # =========================
-    # VALIDAZIONE PER EVENTO
-    # =========================
-
     if event_type == EVENT_TYPE_ENGINE_DECISION:
         if not decision_id:
             raise ValueError("decision_id required for ENGINE_DECISION")
@@ -210,14 +208,11 @@ def build_canonical_ledger_data(
         if not reason or len(reason.strip()) < 5:
             raise ValueError("reason required for ADMIN_OVERRIDE")
 
-        # metadata obbligatori enterprise
         if "override_type" not in metadata:
             raise ValueError("override_type required in metadata")
 
         if "previous_status" not in metadata:
             raise ValueError("previous_status required in metadata")
-
-    # =========================
 
     canonical_status = (
         review_action
@@ -343,3 +338,63 @@ def verify_chain() -> bool:
         prev_hash = record["hash"]
 
     return True
+
+
+# =========================
+# LEDGER CHECKPOINTS
+# =========================
+
+def build_ledger_checkpoint() -> dict:
+    entries = get_ledger_entries()
+    entries_count = len(entries)
+    ledger_last_hash = _get_last_hash()
+
+    checkpoint = {
+        "checkpoint_id": str(uuid.uuid4()),
+        "created_at": _utc_now_iso(),
+        "entries_count": entries_count,
+        "ledger_last_hash": ledger_last_hash,
+    }
+
+    checkpoint["checkpoint_hash"] = _hash_record(checkpoint)
+    return checkpoint
+
+
+def append_ledger_checkpoint() -> dict:
+    os.makedirs(os.path.dirname(LEDGER_CHECKPOINTS_PATH), exist_ok=True)
+
+    checkpoint = build_ledger_checkpoint()
+
+    with open(LEDGER_CHECKPOINTS_PATH, "a") as f:
+        f.write(json.dumps(checkpoint) + "\n")
+
+    return checkpoint
+
+
+def get_ledger_checkpoints() -> list[dict]:
+    if not os.path.exists(LEDGER_CHECKPOINTS_PATH):
+        return []
+
+    with open(LEDGER_CHECKPOINTS_PATH, "r") as f:
+        lines = f.readlines()
+
+    checkpoints = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            checkpoints.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    return checkpoints
+
+
+def get_latest_ledger_checkpoint() -> dict | None:
+    checkpoints = get_ledger_checkpoints()
+    if not checkpoints:
+        return None
+    return checkpoints[-1]
