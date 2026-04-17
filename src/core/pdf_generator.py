@@ -147,6 +147,17 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         spaceAfter=0,
     )
 
+    audit_cell_style = ParagraphStyle(
+        "AuditCellStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#111111"),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+    )
+
     elements = []
 
     def clean(value):
@@ -160,6 +171,12 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             .strip()
         )
 
+    def format_client_name(value):
+        value = clean(value)
+        if not value:
+            return ""
+        return value.capitalize()
+
     def status_color(status: str):
         s = clean(status).upper()
         if s == "REJECTED":
@@ -167,6 +184,21 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         if s == "APPROVED":
             return colors.HexColor("#065F46")
         return colors.HexColor("#1F2937")
+
+    def normalize_anchor_path(path: str) -> str:
+        value = clean(path)
+        if not value:
+            return ""
+
+        value = value.replace("\\", "/")
+        value = value.replace("/Users/domenico/Desktop/", "")
+        value = value.replace("./", "")
+
+        if "aidentitech-external-anchors/" in value:
+            filename = value.split("aidentitech-external-anchors/")[-1]
+            return f".../{filename}"
+
+        return value
 
     def add_section(title: str):
         elements.append(Spacer(1, 4))
@@ -211,10 +243,34 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         elements.append(table)
         elements.append(Spacer(1, 4))
 
-    # spazio iniziale: header già disegnato da canvas
+    def add_audit_table(audit_rows):
+        rows = []
+
+        for rule in audit_rows:
+            rule_id = clean(rule.get("rule_id")) or "-"
+            outcome = clean(rule.get("outcome")) or "unknown"
+
+            rows.append([
+                Paragraph(rule_id, audit_cell_style),
+                Paragraph(outcome, audit_cell_style),
+            ])
+
+        if not rows:
+            return
+
+        table = Table(rows, colWidths=[110 * mm, 28 * mm])
+        table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 6))
+
     elements.append(Spacer(1, 8))
 
-    # EXECUTIVE STATUS BANNER
     final_status = clean(dossier.get("final_status") or dossier.get("engine_status"))
     decision = dossier.get("decision", {}) or {}
 
@@ -252,21 +308,19 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
     elements.append(banner)
     elements.append(Spacer(1, 12))
 
-    # DOCUMENT OVERVIEW
     add_section("Document Overview")
     add_kv_block([
         ("Dossier Type", dossier.get("dossier_type")),
         ("Decision ID", dossier.get("decision_id")),
         ("Timestamp", dossier.get("decision_timestamp")),
-        ("Client", dossier.get("client_id")),
+        ("Client", dossier.get("client_name") or format_client_name(dossier.get("client_id"))),
         ("Module", dossier.get("module")),
     ])
 
-    # DECISION OUTCOME
     add_section("Decision Outcome")
     add_kv_block([
-        ("Engine Status", dossier.get("engine_status")),
-        ("Final Status", dossier.get("final_status")),
+        ("Automated Decision", dossier.get("engine_status")),
+        ("Final Decision", dossier.get("final_status")),
         ("Decision Code", decision.get("decision_code")),
         ("Severity", decision.get("severity") or dossier.get("severity")),
         ("Risk Score", decision.get("risk_score") or dossier.get("risk_score")),
@@ -274,7 +328,6 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         ("Batch Disposition", decision.get("batch_disposition")),
     ])
 
-    # DECISION LIFECYCLE
     add_section("Decision Lifecycle")
     add_kv_block([
         ("Human Review", dossier.get("has_human_review")),
@@ -286,7 +339,6 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         ("Events Count", dossier.get("events_count")),
     ])
 
-    # VERSIONING
     versioning = dossier.get("versioning", {}) or {}
     if any(v not in (None, "", [], {}) for v in versioning.values()):
         add_section("Versioning")
@@ -300,7 +352,6 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             mono_keys={"Rules Hash"},
         )
 
-    # COMPLIANCE SCOPE
     compliance_scope = dossier.get("compliance_scope", {}) or {}
     if compliance_scope:
         frameworks = compliance_scope.get("frameworks", []) or []
@@ -312,24 +363,49 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             ("Frameworks", ", ".join(clean(x) for x in frameworks if clean(x))),
         ])
 
-    # TECHNICAL EXPLANATION
     explanation = dossier.get("explanation", {}) or {}
-    if explanation.get("summary") or explanation.get("details"):
+    if explanation.get("summary") or explanation.get("details") or dossier.get("has_admin_override"):
         add_section("Technical Explanation")
 
         summary = clean(explanation.get("summary"))
+        if dossier.get("has_admin_override") and summary:
+            summary = "Initial validation completed successfully with no triggered issues."
+
         if summary:
             elements.append(Paragraph(summary, body_style))
-            elements.append(Spacer(1, 4))
+            elements.append(Spacer(1, 6))
 
-        for item in explanation.get("details", []):
-            item = clean(item)
-            if item:
-                elements.append(Paragraph(f"• {item}", body_style))
+        details = explanation.get("details", []) or []
+        if details:
+            for item in details:
+                item = clean(item)
+                if item:
+                    elements.append(Paragraph(f"• {item}", body_style))
+            elements.append(Spacer(1, 6))
 
-        elements.append(Spacer(1, 6))
+        if dossier.get("has_admin_override"):
+            override_reason = ""
+            timeline_for_reason = dossier.get("timeline", []) or []
 
-    # EVENT TIMELINE
+            for item in reversed(timeline_for_reason):
+                if clean(item.get("type")) == "OVERRIDE":
+                    data = item.get("data", {}) or {}
+                    override_reason = clean(data.get("reason"))
+                    break
+
+            elements.append(Paragraph(
+                "Final decision overridden due to governance audit action.",
+                body_style,
+            ))
+
+            if override_reason:
+                elements.append(Paragraph(
+                    f"Reason: {override_reason}",
+                    body_style,
+                ))
+
+            elements.append(Spacer(1, 6))
+
     timeline = dossier.get("timeline", []) or []
     if timeline:
         add_section("Event Timeline")
@@ -362,24 +438,29 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             elements.append(Paragraph(detail, small_style))
             elements.append(Spacer(1, 6))
 
-    # RULE EVALUATION LOG
     audit = dossier.get("audit", []) or []
     if audit:
-        add_section("Rule Evaluation Log")
+        add_section("Automated Compliance Checks")
+        add_audit_table(audit)
 
-        for rule in audit:
-            rule_id = clean(rule.get("rule_id"))
-            outcome = clean(rule.get("outcome"))
+    if dossier.get("has_admin_override"):
+        add_section("Governance Decision")
 
-            line = f"• <b>{rule_id}</b>"
-            if outcome:
-                line += f" <font color='#6B7280'>({outcome})</font>"
+        override_reason = ""
+        timeline_for_reason = dossier.get("timeline", []) or []
 
-            elements.append(Paragraph(line, body_style))
+        for item in reversed(timeline_for_reason):
+            if clean(item.get("type")) == "OVERRIDE":
+                data = item.get("data", {}) or {}
+                override_reason = clean(data.get("reason"))
+                break
 
-        elements.append(Spacer(1, 6))
+        add_kv_block([
+            ("Previous Decision", dossier.get("engine_status")),
+            ("Final Decision", dossier.get("final_status")),
+            ("Reason", override_reason),
+        ])
 
-    # CERTIFICATION & INTEGRITY EVIDENCE
     proof = dossier.get("proof", {}) or {}
     add_section("Certification & Integrity Evidence")
     add_kv_block(
@@ -388,10 +469,7 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             ("Latest Ledger Hash", dossier.get("latest_ledger_hash")),
             ("Checkpoint Hash", proof.get("checkpoint_hash")),
             ("Anchor SHA256", proof.get("anchor_sha256")),
-            (
-                "Anchor External Path",
-                clean(proof.get("anchor_external_path")).replace("/Users/domenico/Desktop/", ".../"),
-            ),
+            ("Anchor External Path", normalize_anchor_path(proof.get("anchor_external_path"))),
             ("Timestamp Status", proof.get("timestamp_status")),
             ("Timestamp Provider", proof.get("timestamp_provider")),
             ("Timestamp Proof", proof.get("timestamp_proof")),
@@ -399,14 +477,12 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         mono_keys={"Ledger Hash", "Latest Ledger Hash", "Checkpoint Hash", "Anchor SHA256"},
     )
 
-    # DOSSIER FINGERPRINT
     add_section("Dossier Fingerprint")
     add_kv_block(
         [("Hash", dossier.get("dossier_hash"))],
         mono_keys={"Hash"},
     )
 
-    # CLOSING STATEMENT
     elements.append(Spacer(1, 10))
     add_divider()
     elements.append(Paragraph(
