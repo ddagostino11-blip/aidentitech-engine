@@ -1,3 +1,7 @@
+from datetime import datetime, timezone
+import importlib
+import uuid
+
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 
@@ -7,11 +11,7 @@ from src.modules.registry import AVAILABLE_MODULES
 from src.core.module_router import run_module
 from src.core.db import insert_case
 from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
-from core.ledger_chain import append_ledger_entry
-
-from datetime import datetime, timezone
-import uuid
-import importlib
+from src.core.ledger_chain import append_ledger_entry, build_canonical_ledger_data
 
 router = APIRouter(tags=["ingest"])
 
@@ -60,9 +60,13 @@ def ingest_pharma(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     try:
-        client_id = get_client_from_api_key(x_api_key)
+        auth = get_client_from_api_key(x_api_key)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+    client_id = auth.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=401, detail="Invalid client authentication")
 
     module_name = "pharma"
 
@@ -86,7 +90,7 @@ def ingest_pharma(
 
         source_system = context.get("source_system", "unknown")
         site = context.get("site", "unknown")
-        line = context.get("line", None)
+        line = context.get("line")
 
         ingestion_timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -99,12 +103,19 @@ def ingest_pharma(
         decision_id = str(uuid.uuid4())
         decision_timestamp = datetime.now(timezone.utc).isoformat()
 
-        ledger_entry = append_ledger_entry({
-            "client_id": client_id,
-            "module": module_name,
-            "decision": decision.get("status"),
-            "decision_id": decision_id,
-        })
+        ledger_entry = append_ledger_entry(
+            build_canonical_ledger_data(
+                event_type="ENGINE_DECISION",
+                decision_id=decision_id,
+                client_id=client_id,
+                module=module_name,
+                status=decision.get("status"),
+                severity=decision.get("severity"),
+                risk_score=decision.get("risk_score"),
+                decision_code=decision.get("decision_code"),
+                metadata={},
+            )
+        )
 
         response = {
             "engine": "Aidentitech",
@@ -135,7 +146,7 @@ def ingest_pharma(
                 "source_system": source_system,
                 "site": site,
                 "line": line,
-                "ingestion_timestamp": ingestion_timestamp
+                "ingestion_timestamp": ingestion_timestamp,
             },
         }
 

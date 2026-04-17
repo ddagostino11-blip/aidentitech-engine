@@ -6,6 +6,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
+    HRFlowable,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -18,27 +19,27 @@ def draw_header_footer(canvas, doc):
     canvas.saveState()
 
     # HEADER
-    canvas.setFont("Helvetica-Bold", 10)
     canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.drawString(28 * mm, 285 * mm, "Aidentitech")
+    canvas.setFont("Helvetica-Bold", 10)
+    canvas.drawString(24 * mm, 286 * mm, "Aidentitech")
 
+    canvas.setFillColor(colors.HexColor("#6B7280"))
     canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(colors.HexColor("#666666"))
-    canvas.drawString(28 * mm, 281 * mm, "Certified Technical Dossier")
+    canvas.drawString(24 * mm, 281.5 * mm, "Certified Technical Dossier")
 
     canvas.setStrokeColor(colors.HexColor("#D1D5DB"))
-    canvas.setLineWidth(0.5)
-    canvas.line(28 * mm, 278 * mm, 182 * mm, 278 * mm)
+    canvas.setLineWidth(0.6)
+    canvas.line(24 * mm, 278 * mm, 186 * mm, 278 * mm)
 
     # FOOTER
+    canvas.setFillColor(colors.HexColor("#6B7280"))
     canvas.setFont("Helvetica", 7)
-    canvas.setFillColor(colors.HexColor("#666666"))
     canvas.drawString(
-        28 * mm,
-        15 * mm,
-        "Aidentitech — Cryptographically verifiable compliance record"
+        24 * mm,
+        14 * mm,
+        "Aidentitech — Cryptographically verifiable compliance record",
     )
-    canvas.drawRightString(182 * mm, 15 * mm, f"Page {doc.page}")
+    canvas.drawRightString(186 * mm, 14 * mm, f"Page {doc.page}")
 
     canvas.restoreState()
 
@@ -49,10 +50,10 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=28 * mm,
-        rightMargin=28 * mm,
-        topMargin=30 * mm,
-        bottomMargin=25 * mm,
+        leftMargin=24 * mm,
+        rightMargin=24 * mm,
+        topMargin=34 * mm,
+        bottomMargin=22 * mm,
     )
 
     styles = getSampleStyleSheet()
@@ -65,8 +66,8 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         leading=16,
         alignment=TA_LEFT,
         textColor=colors.HexColor("#111111"),
-        spaceBefore=18,
-        spaceAfter=10,
+        spaceBefore=16,
+        spaceAfter=8,
     )
 
     field_label_style = ParagraphStyle(
@@ -77,7 +78,7 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         leading=10,
         textColor=colors.HexColor("#9CA3AF"),
         alignment=TA_LEFT,
-        spaceAfter=1,
+        spaceAfter=0,
     )
 
     field_value_style = ParagraphStyle(
@@ -121,7 +122,29 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         leading=10,
         textColor=colors.HexColor("#111111"),
         alignment=TA_LEFT,
-        spaceAfter=2,
+        spaceAfter=0,
+    )
+
+    badge_style = ParagraphStyle(
+        "BadgeStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        leading=18,
+        textColor=colors.white,
+        alignment=TA_LEFT,
+        spaceAfter=0,
+    )
+
+    badge_sub_style = ParagraphStyle(
+        "BadgeSubStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.white,
+        alignment=TA_LEFT,
+        spaceAfter=0,
     )
 
     elements = []
@@ -136,6 +159,27 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             .replace("\x0c", "")
             .strip()
         )
+
+    def status_color(status: str):
+        s = clean(status).upper()
+        if s == "REJECTED":
+            return colors.HexColor("#991B1B")
+        if s == "APPROVED":
+            return colors.HexColor("#065F46")
+        return colors.HexColor("#1F2937")
+
+    def add_section(title: str):
+        elements.append(Spacer(1, 4))
+        elements.append(Paragraph(clean(title), section_style))
+
+    def add_divider():
+        elements.append(HRFlowable(
+            width="100%",
+            thickness=0.6,
+            color=colors.HexColor("#D1D5DB"),
+            spaceBefore=0,
+            spaceAfter=8,
+        ))
 
     def add_kv_block(items, mono_keys=None):
         mono_keys = mono_keys or set()
@@ -156,38 +200,59 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         if not rows:
             return
 
-        table = Table(rows, colWidths=[42 * mm, 84 * mm])
+        table = Table(rows, colWidths=[40 * mm, 98 * mm])
         table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
             ("RIGHTPADDING", (0, 0), (-1, -1), 8),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
         ]))
         elements.append(table)
-        elements.append(Spacer(1, 6))
-
-    def add_section(title):
         elements.append(Spacer(1, 4))
-        elements.append(Paragraph(clean(title), section_style))
 
-    def add_divider():
-        divider = Table([[""]], colWidths=[126 * mm], rowHeights=[0.5 * mm])
-        divider.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#D1D5DB")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        elements.append(divider)
-        elements.append(Spacer(1, 6))
-
-    # spacing iniziale perché header è disegnato dal canvas
+    # spazio iniziale: header già disegnato da canvas
     elements.append(Spacer(1, 8))
-    add_divider()
 
-    # ===== OVERVIEW =====
+    # EXECUTIVE STATUS BANNER
+    final_status = clean(dossier.get("final_status") or dossier.get("engine_status"))
+    decision = dossier.get("decision", {}) or {}
+
+    banner_left = [
+        Paragraph(final_status or "UNSPECIFIED", badge_style),
+        Paragraph(
+            f"Decision Code: {clean(decision.get('decision_code')) or 'N/A'}",
+            badge_sub_style,
+        ),
+    ]
+
+    banner_right = [
+        Paragraph(
+            f"<b>Severity</b><br/>{clean(decision.get('severity')) or clean(dossier.get('severity')) or 'N/A'}",
+            badge_sub_style,
+        ),
+        Paragraph(
+            f"<b>Risk Score</b><br/>{clean(decision.get('risk_score')) or clean(dossier.get('risk_score')) or 'N/A'}",
+            badge_sub_style,
+        ),
+    ]
+
+    banner = Table(
+        [[banner_left, banner_right]],
+        colWidths=[92 * mm, 46 * mm],
+    )
+    banner.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), status_color(final_status)),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(banner)
+    elements.append(Spacer(1, 12))
+
+    # DOCUMENT OVERVIEW
     add_section("Document Overview")
     add_kv_block([
         ("Dossier Type", dossier.get("dossier_type")),
@@ -197,20 +262,19 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         ("Module", dossier.get("module")),
     ])
 
-    # ===== DECISION =====
-    decision = dossier.get("decision", {})
+    # DECISION OUTCOME
     add_section("Decision Outcome")
     add_kv_block([
         ("Engine Status", dossier.get("engine_status")),
         ("Final Status", dossier.get("final_status")),
         ("Decision Code", decision.get("decision_code")),
-        ("Severity", decision.get("severity")),
-        ("Risk Score", decision.get("risk_score")),
+        ("Severity", decision.get("severity") or dossier.get("severity")),
+        ("Risk Score", decision.get("risk_score") or dossier.get("risk_score")),
         ("Recommended Action", decision.get("recommended_action")),
         ("Batch Disposition", decision.get("batch_disposition")),
     ])
 
-    # ===== LIFECYCLE =====
+    # DECISION LIFECYCLE
     add_section("Decision Lifecycle")
     add_kv_block([
         ("Human Review", dossier.get("has_human_review")),
@@ -222,9 +286,9 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         ("Events Count", dossier.get("events_count")),
     ])
 
-    # ===== VERSIONING =====
-    versioning = dossier.get("versioning", {})
-    if isinstance(versioning, dict) and any(v not in (None, "", [], {}) for v in versioning.values()):
+    # VERSIONING
+    versioning = dossier.get("versioning", {}) or {}
+    if any(v not in (None, "", [], {}) for v in versioning.values()):
         add_section("Versioning")
         add_kv_block(
             [
@@ -236,24 +300,21 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             mono_keys={"Rules Hash"},
         )
 
-    # ===== COMPLIANCE =====
-    compliance_scope = dossier.get("compliance_scope", {})
-    if isinstance(compliance_scope, dict) and (
-        any(v not in (None, "", [], {}) for k, v in compliance_scope.items() if k != "frameworks")
-        or compliance_scope.get("frameworks")
-    ):
+    # COMPLIANCE SCOPE
+    compliance_scope = dossier.get("compliance_scope", {}) or {}
+    if compliance_scope:
+        frameworks = compliance_scope.get("frameworks", []) or []
         add_section("Compliance Scope")
-        frameworks = compliance_scope.get("frameworks", [])
         add_kv_block([
             ("Criticality", compliance_scope.get("criticality")),
             ("Regulated", compliance_scope.get("regulated")),
             ("Requires Audit Trail", compliance_scope.get("requires_audit_trail")),
-            ("Frameworks", ", ".join(clean(x) for x in frameworks if clean(x)) if frameworks else ""),
+            ("Frameworks", ", ".join(clean(x) for x in frameworks if clean(x))),
         ])
 
-    # ===== EXPLANATION =====
-    explanation = dossier.get("explanation", {})
-    if isinstance(explanation, dict) and (explanation.get("summary") or explanation.get("details")):
+    # TECHNICAL EXPLANATION
+    explanation = dossier.get("explanation", {}) or {}
+    if explanation.get("summary") or explanation.get("details"):
         add_section("Technical Explanation")
 
         summary = clean(explanation.get("summary"))
@@ -268,8 +329,8 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
 
         elements.append(Spacer(1, 6))
 
-    # ===== TIMELINE =====
-    timeline = dossier.get("timeline", [])
+    # EVENT TIMELINE
+    timeline = dossier.get("timeline", []) or []
     if timeline:
         add_section("Event Timeline")
 
@@ -301,8 +362,8 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             elements.append(Paragraph(detail, small_style))
             elements.append(Spacer(1, 6))
 
-    # ===== AUDIT =====
-    audit = dossier.get("audit", [])
+    # RULE EVALUATION LOG
+    audit = dossier.get("audit", []) or []
     if audit:
         add_section("Rule Evaluation Log")
 
@@ -318,7 +379,7 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
 
         elements.append(Spacer(1, 6))
 
-    # ===== PROOF =====
+    # CERTIFICATION & INTEGRITY EVIDENCE
     proof = dossier.get("proof", {}) or {}
     add_section("Certification & Integrity Evidence")
     add_kv_block(
@@ -327,7 +388,10 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             ("Latest Ledger Hash", dossier.get("latest_ledger_hash")),
             ("Checkpoint Hash", proof.get("checkpoint_hash")),
             ("Anchor SHA256", proof.get("anchor_sha256")),
-            ("Anchor External Path", clean(proof.get("anchor_external_path")).replace("/Users/domenico/Desktop/", ".../")),
+            (
+                "Anchor External Path",
+                clean(proof.get("anchor_external_path")).replace("/Users/domenico/Desktop/", ".../"),
+            ),
             ("Timestamp Status", proof.get("timestamp_status")),
             ("Timestamp Provider", proof.get("timestamp_provider")),
             ("Timestamp Proof", proof.get("timestamp_proof")),
@@ -335,15 +399,15 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         mono_keys={"Ledger Hash", "Latest Ledger Hash", "Checkpoint Hash", "Anchor SHA256"},
     )
 
-    # ===== HASH =====
+    # DOSSIER FINGERPRINT
     add_section("Dossier Fingerprint")
     add_kv_block(
         [("Hash", dossier.get("dossier_hash"))],
         mono_keys={"Hash"},
     )
 
-    # ===== FOOTER CONTENT =====
-    elements.append(Spacer(1, 12))
+    # CLOSING STATEMENT
+    elements.append(Spacer(1, 10))
     add_divider()
     elements.append(Paragraph(
         "Certified by Aidentitech — Cryptographically verifiable compliance record.",
