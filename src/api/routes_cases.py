@@ -3,7 +3,13 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from core.ledger_chain import append_ledger_entry, build_canonical_ledger_data
+
+from src.core.ledger_chain import (
+    append_ledger_entry,
+    build_canonical_ledger_data,
+    get_latest_ledger_checkpoint,
+    get_latest_public_timestamp_receipt,
+)
 from src.core.db import (
     get_case_by_decision_id,
     get_case_summaries,
@@ -15,6 +21,7 @@ from src.core.db import (
 from src.core.auth import get_client_from_api_key
 from src.core.pdf_generator import generate_dossier_pdf
 from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
+
 import csv
 import io
 
@@ -73,17 +80,67 @@ def _load_authorized_case(decision_id: str, x_api_key: str | None):
     return case, auth
 
 
-def _build_case_summary_response(case: dict, timeline: dict | None) -> dict:
+def _get_case_timeline_or_fallback(decision_id: str) -> dict | None:
+    timeline = get_case_timeline_from_ledger(decision_id)
+
+    if not timeline:
+        timeline = get_case_timeline(decision_id)
+
+    return timeline
+
+
+def _infer_dossier_type(case_context: dict) -> str:
+    final_status = case_context.get("final_status")
+    has_admin_override = case_context.get("has_admin_override")
+    has_human_review = case_context.get("has_human_review")
+    review_required = case_context.get("review_required")
+    severity = case_context.get("severity")
+    risk_score = case_context.get("risk_score")
+
+    payload = case_context.get("normalized_payload")
+    if payload is None:
+        payload = case_context.get("payload")
+
+    has_decision_core = any([
+        case_context.get("decision_id"),
+        case_context.get("status"),
+        case_context.get("decision_code"),
+        case_context.get("decision_timestamp"),
+    ])
+
+    if not payload and not has_decision_core:
+        return "INVALID_INPUT_DOSSIER"
+
+    if final_status == "REJECTED":
+        return "REJECTION_DOSSIER"
+
+    if (
+        has_admin_override
+        or has_human_review
+        or review_required
+        or severity in {"HIGH", "CRITICAL"}
+        or (isinstance(risk_score, (int, float)) and risk_score > 0)
+    ):
+        return "RISK_ANALYSIS_DOSSIER"
+
+    return "AUDIT_READY_DOSSIER"
+    
+def _build_case_dossier_context(case: dict, timeline: dict | None) -> dict:
     timeline_items = (timeline or {}).get("timeline", [])
 
     decision_events = [
         item for item in timeline_items
         if item.get("type") == "DECISION"
     ]
-    state_change_events = [
+    review_events = [
         item for item in timeline_items
-        if item.get("type") in {"REVIEW", "OVERRIDE"}
+        if item.get("type") == "REVIEW"
     ]
+    override_events = [
+        item for item in timeline_items
+        if item.get("type") == "OVERRIDE"
+    ]
+    state_change_events = review_events + override_events
 
     latest_decision = decision_events[-1] if decision_events else None
     latest_state_change = state_change_events[-1] if state_change_events else None
@@ -107,26 +164,60 @@ def _build_case_summary_response(case: dict, timeline: dict | None) -> dict:
     if not latest_ledger_hash:
         latest_ledger_hash = case.get("ledger_hash")
 
-    return {
-        "decision_id": case.get("decision_id"),
-        "client_id": case.get("client_id"),
-        "module": case.get("module"),
+    checkpoint = get_latest_ledger_checkpoint()
+    receipt = get_latest_public_timestamp_receipt()
+
+    enriched = {
+        **case,
         "engine_status": engine_status,
         "final_status": final_status,
-        "has_human_review": any(item.get("type") == "REVIEW" for item in state_change_events),
-        "has_admin_override": any(item.get("type") == "OVERRIDE" for item in state_change_events),
+        "has_human_review": len(review_events) > 0,
+        "has_admin_override": len(override_events) > 0,
         "latest_review_action": latest_review_action,
-        "review_count": len([item for item in state_change_events if item.get("type") == "REVIEW"]),
-        "override_count": len([item for item in state_change_events if item.get("type") == "OVERRIDE"]),
-        "decision_timestamp": case.get("decision_timestamp"),
-        "latest_event_timestamp": latest_event.get("timestamp") if latest_event else case.get("decision_timestamp"),
+        "review_count": len(review_events),
+        "override_count": len(override_events),
+        "latest_event_timestamp": (
+            latest_event.get("timestamp") if latest_event else case.get("decision_timestamp")
+        ),
         "events_count": len(timeline_items),
         "latest_ledger_hash": latest_ledger_hash,
-        "severity": case.get("severity"),
-        "risk_score": case.get("risk_score"),
-        "decision_code": case.get("decision_code"),
-        "review_required": case.get("review_required"),
-        "dossier_hash": case.get("dossier_hash"),
+        "timeline": timeline_items,
+        "checkpoint_hash": checkpoint.get("checkpoint_hash") if checkpoint else None,
+        "anchor_sha256": receipt.get("anchor_sha256") if receipt else None,
+        "anchor_external_path": receipt.get("anchor_external_path") if receipt else None,
+        "timestamp_status": receipt.get("timestamp_status") if receipt else None,
+        "timestamp_provider": receipt.get("timestamp_provider") if receipt else None,
+        "timestamp_proof": receipt.get("timestamp_proof") if receipt else None,
+    }
+
+    enriched["dossier_type"] = _infer_dossier_type(enriched)
+    return enriched
+
+
+def _build_case_summary_response(case: dict, timeline: dict | None) -> dict:
+    case_context = _build_case_dossier_context(case, timeline)
+
+    return {
+        "decision_id": case_context.get("decision_id"),
+        "client_id": case_context.get("client_id"),
+        "module": case_context.get("module"),
+        "engine_status": case_context.get("engine_status"),
+        "final_status": case_context.get("final_status"),
+        "has_human_review": case_context.get("has_human_review"),
+        "has_admin_override": case_context.get("has_admin_override"),
+        "latest_review_action": case_context.get("latest_review_action"),
+        "review_count": case_context.get("review_count"),
+        "override_count": case_context.get("override_count"),
+        "decision_timestamp": case_context.get("decision_timestamp"),
+        "latest_event_timestamp": case_context.get("latest_event_timestamp"),
+        "events_count": case_context.get("events_count"),
+        "latest_ledger_hash": case_context.get("latest_ledger_hash"),
+        "severity": case_context.get("severity"),
+        "risk_score": case_context.get("risk_score"),
+        "decision_code": case_context.get("decision_code"),
+        "review_required": case_context.get("review_required"),
+        "dossier_hash": case_context.get("dossier_hash"),
+        "dossier_type": case_context.get("dossier_type"),
     }
 
 
@@ -221,8 +312,7 @@ def export_cases(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=cases_export.csv"},
     )
-
-
+    
 # =========================
 # 3️⃣ LISTA CASI
 # =========================
@@ -259,7 +349,10 @@ def get_case_dossier(
 ):
     case, _auth = _load_authorized_case(decision_id, x_api_key)
 
-    dossier = build_dossier_payload(case)
+    timeline = _get_case_timeline_or_fallback(decision_id)
+    case_context = _build_case_dossier_context(case, timeline)
+
+    dossier = build_dossier_payload(case_context)
     dossier_hash = compute_dossier_hash(dossier)
 
     return {
@@ -278,18 +371,23 @@ def verify_case_dossier(
 ):
     case, _auth = _load_authorized_case(decision_id, x_api_key)
 
-    dossier = build_dossier_payload(case)
+    timeline = _get_case_timeline_or_fallback(decision_id)
+    case_context = _build_case_dossier_context(case, timeline)
+
+    dossier = build_dossier_payload(case_context)
     recomputed_hash = compute_dossier_hash(dossier)
     stored_hash = case.get("dossier_hash")
 
     return {
-        "decision_id": case.get("decision_id"),
-        "client_id": case.get("client_id"),
-        "module": case.get("module"),
+        "decision_id": case_context.get("decision_id"),
+        "client_id": case_context.get("client_id"),
+        "module": case_context.get("module"),
+        "dossier_type": case_context.get("dossier_type"),
         "verified": stored_hash == recomputed_hash,
         "stored_hash": stored_hash,
         "recomputed_hash": recomputed_hash,
-        "ledger_hash": case.get("ledger_hash"),
+        "ledger_hash": case_context.get("ledger_hash"),
+        "final_status": case_context.get("final_status"),
     }
 
 
@@ -303,7 +401,10 @@ def get_case_dossier_pdf(
 ):
     case, _auth = _load_authorized_case(decision_id, x_api_key)
 
-    dossier = build_dossier_payload(case)
+    timeline = _get_case_timeline_or_fallback(decision_id)
+    case_context = _build_case_dossier_context(case, timeline)
+
+    dossier = build_dossier_payload(case_context)
     dossier_hash = compute_dossier_hash(dossier)
 
     pdf_payload = {
@@ -344,14 +445,10 @@ def get_case_summary(
 ):
     case, _auth = _load_authorized_case(decision_id, x_api_key)
 
-    timeline = get_case_timeline_from_ledger(decision_id)
-
-    if not timeline:
-        timeline = get_case_timeline(decision_id)
+    timeline = _get_case_timeline_or_fallback(decision_id)
 
     return _build_case_summary_response(case, timeline)
-
-
+    
 # =========================
 # 8️⃣ REVIEW MANUALE
 # =========================
@@ -420,10 +517,7 @@ def admin_override_case(
     reviewer_id = auth.get("client_id")
     action = request.action.upper()
 
-    timeline = get_case_timeline_from_ledger(decision_id)
-
-    if not timeline:
-        timeline = get_case_timeline(decision_id)
+    timeline = _get_case_timeline_or_fallback(decision_id)
 
     previous_status = case.get("status")
 
@@ -509,10 +603,7 @@ def get_timeline(
 ):
     case, _auth = _load_authorized_case(decision_id, x_api_key)
 
-    timeline = get_case_timeline_from_ledger(decision_id)
-
-    if not timeline:
-        timeline = get_case_timeline(decision_id)
+    timeline = _get_case_timeline_or_fallback(decision_id)
 
     if not timeline:
         raise HTTPException(status_code=404, detail="Timeline not found")

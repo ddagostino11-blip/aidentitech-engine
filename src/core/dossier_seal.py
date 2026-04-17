@@ -5,10 +5,21 @@ import json
 def build_dossier_payload(case: dict) -> dict:
     return {
         "engine": case.get("engine"),
+        "dossier_type": case.get("dossier_type"),
         "decision_id": case.get("decision_id"),
         "decision_timestamp": case.get("decision_timestamp"),
         "client_id": case.get("client_id"),
         "module": case.get("module"),
+        "engine_status": case.get("engine_status"),
+        "final_status": case.get("final_status"),
+        "has_human_review": case.get("has_human_review"),
+        "has_admin_override": case.get("has_admin_override"),
+        "latest_review_action": case.get("latest_review_action"),
+        "review_count": case.get("review_count"),
+        "override_count": case.get("override_count"),
+        "latest_event_timestamp": case.get("latest_event_timestamp"),
+        "events_count": case.get("events_count"),
+        "latest_ledger_hash": case.get("latest_ledger_hash"),
         "decision": {
             "status": case.get("status"),
             "severity": case.get("severity"),
@@ -17,6 +28,7 @@ def build_dossier_payload(case: dict) -> dict:
             "recommended_action": case.get("recommended_action"),
             "batch_disposition": case.get("batch_disposition"),
         },
+        "timeline": case.get("timeline", []),
         "audit": case.get("audit", []),
         "explanation": case.get("explanation", {}),
         "integration": case.get("integration", {}),
@@ -24,6 +36,15 @@ def build_dossier_payload(case: dict) -> dict:
         "versioning": case.get("versioning", {}),
         "compliance_scope": case.get("compliance_scope", {}),
         "ledger_hash": case.get("ledger_hash"),
+        "proof": {
+            "ledger_hash": case.get("ledger_hash"),
+            "checkpoint_hash": case.get("checkpoint_hash"),
+            "anchor_sha256": case.get("anchor_sha256"),
+            "anchor_external_path": case.get("anchor_external_path"),
+            "timestamp_status": case.get("timestamp_status"),
+            "timestamp_provider": case.get("timestamp_provider"),
+            "timestamp_proof": case.get("timestamp_proof"),
+        },
     }
 
 
