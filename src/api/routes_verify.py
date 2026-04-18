@@ -5,6 +5,10 @@ from src.core.db import (
     get_case_by_decision_id,
     get_latest_review_by_decision_id,
 )
+from src.core.dossier_seal import (
+    build_dossier_payload,
+    compute_dossier_signature,
+)
 
 router = APIRouter(tags=["verify"])
 
@@ -32,6 +36,16 @@ def _normalize_reviewer(reviewer: str | None) -> str:
     return reviewer
 
 
+def _compute_signature_validation(case: dict) -> tuple[str | None, bool | None]:
+    stored_signature = case.get("signature")
+    if not stored_signature:
+        return None, None
+
+    dossier_payload = build_dossier_payload(case)
+    computed_signature = compute_dossier_signature(dossier_payload)
+    return stored_signature, stored_signature == computed_signature
+
+
 def _build_verify_payload(decision_id: str) -> dict:
     case = get_case_by_decision_id(decision_id)
 
@@ -55,6 +69,8 @@ def _build_verify_payload(decision_id: str) -> dict:
         latest_review.get("reviewer_id") if latest_review else None
     )
 
+    signature, signature_valid = _compute_signature_validation(case)
+
     return {
         "verified": True,
         "decision_id": case.get("decision_id"),
@@ -69,6 +85,8 @@ def _build_verify_payload(decision_id: str) -> dict:
         "latest_event_timestamp": latest_event_timestamp,
         "ledger_hash": case.get("ledger_hash"),
         "dossier_hash": case.get("dossier_hash"),
+        "signature": signature,
+        "signature_valid": signature_valid,
         "override_reason": override_reason,
         "override_reviewer": override_reviewer,
     }
@@ -89,10 +107,25 @@ def verify_case_view(decision_id: str):
     override_reason = _fmt(data["override_reason"])
     override_reviewer = _fmt(data["override_reviewer"])
     verified = bool(data["verified"])
+    signature_value = _fmt(data["signature"])
+    signature_valid = data["signature_valid"]
 
     status_color = "#991B1B" if final_status == "REJECTED" else "#065F46"
     status_bg = "#FEF2F2" if final_status == "REJECTED" else "#ECFDF5"
     verified_color = "#065F46" if verified else "#991B1B"
+
+    if signature_valid is True:
+        signature_status = "VALID"
+        signature_status_color = "#065F46"
+        signature_status_bg = "#ECFDF5"
+    elif signature_valid is False:
+        signature_status = "INVALID"
+        signature_status_color = "#991B1B"
+        signature_status_bg = "#FEF2F2"
+    else:
+        signature_status = "NOT AVAILABLE"
+        signature_status_color = "#6B7280"
+        signature_status_bg = "#F3F4F6"
 
     override_block = ""
     if has_override:
@@ -136,6 +169,8 @@ def verify_case_view(decision_id: str):
         }}
         .brand {{
           font-weight: 700;
+          font-size: 18px;
+          margin-bottom: 6px;
         }}
         .status {{
           margin-top: 12px;
@@ -153,9 +188,21 @@ def verify_case_view(decision_id: str):
           border-radius: 999px;
           background: {status_bg};
           color: {verified_color};
+          font-weight: 700;
+        }}
+        .sig-badge {{
+          display: inline-block;
+          margin-left: 10px;
+          font-size: 12px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: {signature_status_bg};
+          color: {signature_status_color};
+          font-weight: 700;
         }}
         .section {{
           padding: 20px 24px;
+          border-top: 1px solid #f0f0f0;
         }}
         .grid {{
           display: grid;
@@ -168,6 +215,7 @@ def verify_case_view(decision_id: str):
         }}
         .value {{
           font-weight: 600;
+          word-break: break-word;
         }}
         .mono {{
           font-family: monospace;
@@ -181,6 +229,16 @@ def verify_case_view(decision_id: str):
           border-radius: 8px;
           color: #7f1d1d;
         }}
+        .alert-title {{
+          font-weight: 700;
+          margin-bottom: 4px;
+        }}
+        .alert-text {{
+          margin-bottom: 6px;
+        }}
+        .alert-meta {{
+          margin-top: 3px;
+        }}
       </style>
     </head>
     <body>
@@ -191,6 +249,7 @@ def verify_case_view(decision_id: str):
             <div class="brand">Aidentitech</div>
             <div class="status">{final_status}</div>
             <span class="verified">VERIFIED: {str(verified).upper()}</span>
+            <span class="sig-badge">SIGNATURE: {signature_status}</span>
             {override_block}
           </div>
 
@@ -222,12 +281,22 @@ def verify_case_view(decision_id: str):
 
               <div class="label">Timestamp</div>
               <div class="value mono">{_fmt(data["latest_event_timestamp"])}</div>
+            </div>
+          </div>
 
-              <div class="label">Ledger</div>
+          <div class="section">
+            <div class="grid">
+              <div class="label">Ledger Hash</div>
               <div class="value mono">{_fmt(data["ledger_hash"])}</div>
 
-              <div class="label">Dossier</div>
+              <div class="label">Dossier Hash</div>
               <div class="value mono">{_fmt(data["dossier_hash"])}</div>
+
+              <div class="label">Signature</div>
+              <div class="value mono">{signature_value or "Not available"}</div>
+
+              <div class="label">Signature Valid</div>
+              <div class="value">{signature_status}</div>
             </div>
           </div>
 

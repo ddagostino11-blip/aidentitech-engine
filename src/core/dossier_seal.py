@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import hmac
 
 
 def build_dossier_payload(case: dict) -> dict:
@@ -48,6 +50,28 @@ def build_dossier_payload(case: dict) -> dict:
     }
 
 
+def _canonical_json(data: dict) -> str:
+    return json.dumps(data, sort_keys=True, separators=(",", ":"))
+
+
 def compute_dossier_hash(dossier: dict) -> str:
-    canonical = json.dumps(dossier, sort_keys=True, separators=(",", ":"))
+    canonical = _canonical_json(dossier)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def compute_dossier_signature(dossier: dict) -> str:
+    """
+    Firma HMAC SHA256 del dossier.
+    Usa una secret lato server.
+    """
+    secret = os.getenv("DOSSIER_SIGNING_SECRET", "dev-secret-change-me")
+
+    canonical = _canonical_json(dossier)
+
+    signature = hmac.new(
+        key=secret.encode("utf-8"),
+        msg=canonical.encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+
+    return signature

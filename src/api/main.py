@@ -19,7 +19,11 @@ from src.core.auth import get_client_from_api_key
 from src.core.payload_adapter import normalize_payload
 
 # dossier seal
-from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
+from src.core.dossier_seal import (
+    build_dossier_payload,
+    compute_dossier_hash,
+    compute_dossier_signature,
+)
 
 # routes
 from src.api.routes_cases import router as cases_router
@@ -204,10 +208,13 @@ def validate(
             "ledger_hash": ledger_entry.get("hash"),
         }
 
-        # dossier + hash
+        # dossier + hash + signature
         dossier_source = build_dossier_payload(response)
         dossier_hash = compute_dossier_hash(dossier_source)
+        dossier_signature = compute_dossier_signature(dossier_source)
+
         response["dossier_hash"] = dossier_hash
+        response["signature"] = dossier_signature
 
         # salvataggio DB
         insert_case({
