@@ -22,8 +22,7 @@ from src.core.dossier_normalizer import normalize_dossier_payload
 
 BRAND_NAME = "Aidentitech"
 BRAND_SUBTITLE = "Certified Technical Dossier"
-VERIFY_BASE_URL = "https://verify.aidentitech.com"
-
+VERIFY_BASE_URL = "http://127.0.0.1:8000/verify"
 
 def build_qr_image(data: str, size_mm: int = 28) -> Image:
     qr = qrcode.QRCode(
@@ -495,7 +494,7 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
 
     decision_id = clean(dossier.get("decision_id"))
     dossier_hash = clean(dossier.get("dossier_hash"))
-    verify_url = f"{VERIFY_BASE_URL}/{decision_id}" if decision_id else dossier_hash
+    verify_url = f"{VERIFY_BASE_URL}/{decision_id}/view" if decision_id else dossier_hash
 
     banner_left = [
         Paragraph("COMPLIANCE DECISION", badge_title_style),
