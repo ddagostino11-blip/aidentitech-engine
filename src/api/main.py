@@ -25,6 +25,7 @@ from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
 from src.api.routes_cases import router as cases_router
 from src.api.routes_admin import router as admin_router
 from src.api.routes_ingest import router as ingest_router
+from src.api.routes_verify import router as verify_router
 
 ENGINE_NAME = "Aidentitech"
 
@@ -41,6 +42,7 @@ def startup_event():
 app.include_router(cases_router)
 app.include_router(admin_router)
 app.include_router(ingest_router)
+app.include_router(verify_router)
 
 
 def load_module_config(module_name: str):
