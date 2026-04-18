@@ -1,7 +1,8 @@
 from io import BytesIO
+import os
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -14,30 +15,34 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from src.core.dossier_normalizer import normalize_dossier_payload
+
+
+BRAND_NAME = "Aidentitech"
+BRAND_SUBTITLE = "Certified Technical Dossier"
+
 
 def draw_header_footer(canvas, doc):
     canvas.saveState()
 
-    # HEADER
     canvas.setFillColor(colors.HexColor("#111111"))
     canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(24 * mm, 286 * mm, "Aidentitech")
+    canvas.drawString(24 * mm, 286 * mm, BRAND_NAME)
 
     canvas.setFillColor(colors.HexColor("#6B7280"))
     canvas.setFont("Helvetica", 8)
-    canvas.drawString(24 * mm, 281.5 * mm, "Certified Technical Dossier")
+    canvas.drawString(24 * mm, 281.5 * mm, BRAND_SUBTITLE)
 
     canvas.setStrokeColor(colors.HexColor("#D1D5DB"))
     canvas.setLineWidth(0.6)
     canvas.line(24 * mm, 278 * mm, 186 * mm, 278 * mm)
 
-    # FOOTER
     canvas.setFillColor(colors.HexColor("#6B7280"))
     canvas.setFont("Helvetica", 7)
     canvas.drawString(
         24 * mm,
         14 * mm,
-        "Aidentitech — Cryptographically verifiable compliance record",
+        f"{BRAND_NAME} — Cryptographically verifiable compliance record",
     )
     canvas.drawRightString(186 * mm, 14 * mm, f"Page {doc.page}")
 
@@ -45,6 +50,8 @@ def draw_header_footer(canvas, doc):
 
 
 def generate_dossier_pdf(dossier: dict) -> BytesIO:
+    dossier = normalize_dossier_payload(dossier).model_dump()
+
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -66,7 +73,7 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         leading=16,
         alignment=TA_LEFT,
         textColor=colors.HexColor("#111111"),
-        spaceBefore=16,
+        spaceBefore=18,
         spaceAfter=8,
     )
 
@@ -90,6 +97,12 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         textColor=colors.HexColor("#111111"),
         alignment=TA_LEFT,
         spaceAfter=0,
+    )
+
+    field_value_emphasis_style = ParagraphStyle(
+        "FieldValueEmphasisStyle",
+        parent=field_value_style,
+        textColor=colors.HexColor("#991B1B"),
     )
 
     body_style = ParagraphStyle(
@@ -125,12 +138,23 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         spaceAfter=0,
     )
 
+    badge_title_style = ParagraphStyle(
+        "BadgeTitleStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=11,
+        textColor=colors.white,
+        alignment=TA_LEFT,
+        spaceAfter=1,
+    )
+
     badge_style = ParagraphStyle(
         "BadgeStyle",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=14,
-        leading=18,
+        fontSize=16,
+        leading=19,
         textColor=colors.white,
         alignment=TA_LEFT,
         spaceAfter=0,
@@ -147,14 +171,69 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         spaceAfter=0,
     )
 
-    audit_cell_style = ParagraphStyle(
-        "AuditCellStyle",
+    governance_alert_title_style = ParagraphStyle(
+        "GovernanceAlertTitleStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=13,
+        textColor=colors.HexColor("#7F1D1D"),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+    )
+
+    governance_alert_body_style = ParagraphStyle(
+        "GovernanceAlertBodyStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#7F1D1D"),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+    )
+
+    timeline_heading_style = ParagraphStyle(
+        "TimelineHeadingStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9.5,
+        leading=12,
+        textColor=colors.HexColor("#111111"),
+        alignment=TA_LEFT,
+        spaceAfter=2,
+    )
+
+    timeline_detail_style = ParagraphStyle(
+        "TimelineDetailStyle",
         parent=styles["Normal"],
         fontName="Helvetica",
         fontSize=9,
         leading=12,
         textColor=colors.HexColor("#111111"),
         alignment=TA_LEFT,
+        spaceAfter=0,
+    )
+
+    check_name_style = ParagraphStyle(
+        "CheckNameStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#111111"),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+    )
+
+    check_status_style = ParagraphStyle(
+        "CheckStatusStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#065F46"),
+        alignment=TA_RIGHT,
         spaceAfter=0,
     )
 
@@ -171,12 +250,6 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             .strip()
         )
 
-    def format_client_name(value):
-        value = clean(value)
-        if not value:
-            return ""
-        return value.capitalize()
-
     def status_color(status: str):
         s = clean(status).upper()
         if s == "REJECTED":
@@ -185,20 +258,82 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             return colors.HexColor("#065F46")
         return colors.HexColor("#1F2937")
 
-    def normalize_anchor_path(path: str) -> str:
-        value = clean(path)
-        if not value:
+    def normalize_anchor_filename(value: str) -> str:
+        raw = clean(value)
+        if not raw:
             return ""
 
-        value = value.replace("\\", "/")
-        value = value.replace("/Users/domenico/Desktop/", "")
-        value = value.replace("./", "")
+        filename = os.path.basename(raw.replace("\\", "/"))
+        filename = filename.replace("+00-00", "Z")
+        filename = filename.replace("..", "")
+        return filename
 
-        if "aidentitech-external-anchors/" in value:
-            filename = value.split("aidentitech-external-anchors/")[-1]
-            return f".../{filename}"
+    def get_override_reason() -> str:
+        timeline = dossier.get("timeline", []) or []
+        for item in reversed(timeline):
+            if clean(item.get("type")).upper() == "OVERRIDE":
+                data = item.get("data", {}) or {}
+                return clean(data.get("reason"))
+        return ""
 
-        return value
+    def get_override_reviewer() -> str:
+        timeline = dossier.get("timeline", []) or []
+        for item in reversed(timeline):
+            if clean(item.get("type")).upper() == "OVERRIDE":
+                data = item.get("data", {}) or {}
+                reviewer = clean(data.get("reviewer_id"))
+                if reviewer.lower() == "aidentitech":
+                    return "System"
+                return reviewer or "System"
+        return "System"
+
+    def normalize_check_status(value: str) -> str:
+        v = clean(value).lower()
+        if v == "passed":
+            return "✔ PASSED"
+        if v == "failed":
+            return "✖ FAILED"
+        return v.upper() if v else "UNKNOWN"
+
+    def classify_rule(rule_id: str) -> str:
+        r = clean(rule_id).lower()
+
+        if any(token in r for token in ["product", "batch", "required_"]):
+            if any(token in r for token in ["temperature"]):
+                return "Temperature Control"
+            if any(token in r for token in ["gmp", "deviation", "capa"]):
+                return "Quality & Compliance"
+            return "Data Integrity"
+
+        if any(token in r for token in ["gmp", "deviation", "capa"]):
+            return "Quality & Compliance"
+
+        if "temperature" in r:
+            return "Temperature Control"
+
+        return "Automated Checks"
+
+    def grouped_audit_rows(audit_rows: list[dict]) -> list:
+        grouped = {}
+        order = []
+
+        for rule in audit_rows:
+            group_name = classify_rule(rule.get("rule_id"))
+            if group_name not in grouped:
+                grouped[group_name] = []
+                order.append(group_name)
+            grouped[group_name].append(rule)
+
+        rows = []
+        for group_name in order:
+            rows.append(("__GROUP__", group_name, ""))
+            for rule in grouped[group_name]:
+                rows.append((
+                    clean(rule.get("rule_id")) or "-",
+                    normalize_check_status(rule.get("outcome")),
+                    "rule",
+                ))
+        return rows
 
     def add_section(title: str):
         elements.append(Spacer(1, 4))
@@ -213,8 +348,9 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             spaceAfter=8,
         ))
 
-    def add_kv_block(items, mono_keys=None):
+    def add_kv_block(items, mono_keys=None, value_styles=None):
         mono_keys = mono_keys or set()
+        value_styles = value_styles or {}
         rows = []
 
         for label, value in items:
@@ -222,11 +358,14 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             if not value:
                 continue
 
-            value_style = mono_style if label in mono_keys else field_value_style
+            current_value_style = value_styles.get(
+                label,
+                mono_style if label in mono_keys else field_value_style
+            )
 
             rows.append([
                 Paragraph(clean(label), field_label_style),
-                Paragraph(value, value_style),
+                Paragraph(value, current_value_style),
             ])
 
         if not rows:
@@ -244,37 +383,97 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         elements.append(Spacer(1, 4))
 
     def add_audit_table(audit_rows):
-        rows = []
-
-        for rule in audit_rows:
-            rule_id = clean(rule.get("rule_id")) or "-"
-            outcome = clean(rule.get("outcome")) or "unknown"
-
-            rows.append([
-                Paragraph(rule_id, audit_cell_style),
-                Paragraph(outcome, audit_cell_style),
-            ])
-
+        rows = grouped_audit_rows(audit_rows)
         if not rows:
             return
 
-        table = Table(rows, colWidths=[110 * mm, 28 * mm])
-        table.setStyle(TableStyle([
+        table_rows = []
+        styles_cmds = [
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
             ("RIGHTPADDING", (0, 0), (-1, -1), 8),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]))
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ]
+
+        row_index = 0
+        for name, status, kind in rows:
+            if name == "__GROUP__":
+                table_rows.append([
+                    Paragraph(f"<b>{status.upper()}</b>", small_style),
+                    Paragraph("", small_style),
+                ])
+                styles_cmds.extend([
+                    ("SPAN", (0, row_index), (1, row_index)),
+                    ("BACKGROUND", (0, row_index), (1, row_index), colors.HexColor("#F9FAFB")),
+                    ("TOPPADDING", (0, row_index), (1, row_index), 6),
+                    ("BOTTOMPADDING", (0, row_index), (1, row_index), 4),
+                ])
+            else:
+                table_rows.append([
+                    Paragraph(name, check_name_style),
+                    Paragraph(status, check_status_style),
+                ])
+            row_index += 1
+
+        table = Table(table_rows, colWidths=[100 * mm, 38 * mm])
+        table.setStyle(TableStyle(styles_cmds))
         elements.append(table)
         elements.append(Spacer(1, 6))
+
+    def add_governance_alert(reason: str):
+        content = [
+            [Paragraph("Governance Override", governance_alert_title_style)],
+            [Paragraph("Final decision overridden due to audit finding.", governance_alert_body_style)],
+        ]
+
+        if reason:
+            content.append([Paragraph(f"Reason: {reason}", governance_alert_body_style)])
+
+        alert_table = Table(content, colWidths=[138 * mm])
+        alert_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FEF2F2")),
+            ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#7F1D1D")),
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#FECACA")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(alert_table)
+        elements.append(Spacer(1, 10))
+
+    def add_override_event_block(timestamp: str, action: str, reviewer: str, reason: str):
+        block_rows = [
+            [Paragraph("GOVERNANCE OVERRIDE EVENT", timeline_heading_style)],
+            [Paragraph(f"<b>Timestamp:</b> {timestamp}", timeline_detail_style)],
+            [Paragraph(f"<b>Action:</b> {action}", timeline_detail_style)],
+            [Paragraph(f"<b>Reviewer:</b> {reviewer}", timeline_detail_style)],
+            [Paragraph(f"<b>Reason:</b> {reason}", timeline_detail_style)],
+        ]
+
+        box = Table(block_rows, colWidths=[138 * mm])
+        box.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#D1D5DB")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(box)
+        elements.append(Spacer(1, 8))
 
     elements.append(Spacer(1, 8))
 
     final_status = clean(dossier.get("final_status") or dossier.get("engine_status"))
     decision = dossier.get("decision", {}) or {}
+    override_reason = get_override_reason()
+    override_reviewer = get_override_reviewer()
 
     banner_left = [
+        Paragraph("COMPLIANCE DECISION", badge_title_style),
         Paragraph(final_status or "UNSPECIFIED", badge_style),
         Paragraph(
             f"Decision Code: {clean(decision.get('decision_code')) or 'N/A'}",
@@ -306,27 +505,41 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     elements.append(banner)
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 8))
+    elements.append(Paragraph(
+        "Audit-validated compliance decision with full traceability.",
+        small_style,
+    ))
+    elements.append(Spacer(1, 8))
+
+    if dossier.get("has_admin_override"):
+        add_governance_alert(override_reason)
 
     add_section("Document Overview")
     add_kv_block([
         ("Dossier Type", dossier.get("dossier_type")),
         ("Decision ID", dossier.get("decision_id")),
         ("Timestamp", dossier.get("decision_timestamp")),
-        ("Client", dossier.get("client_name") or format_client_name(dossier.get("client_id"))),
+        ("Client", dossier.get("client_name") or clean(dossier.get("client_id"))),
         ("Module", dossier.get("module")),
     ])
 
     add_section("Decision Outcome")
-    add_kv_block([
-        ("Automated Decision", dossier.get("engine_status")),
-        ("Final Decision", dossier.get("final_status")),
-        ("Decision Code", decision.get("decision_code")),
-        ("Severity", decision.get("severity") or dossier.get("severity")),
-        ("Risk Score", decision.get("risk_score") or dossier.get("risk_score")),
-        ("Recommended Action", decision.get("recommended_action")),
-        ("Batch Disposition", decision.get("batch_disposition")),
-    ])
+    add_kv_block(
+        [
+            ("Automated Decision", dossier.get("engine_status")),
+            ("Final Decision", dossier.get("final_status")),
+            ("Decision Code", decision.get("decision_code")),
+            ("Severity", decision.get("severity") or dossier.get("severity")),
+            ("Risk Score", decision.get("risk_score") or dossier.get("risk_score")),
+            ("Recommended Action", decision.get("recommended_action")),
+            ("Batch Disposition", decision.get("batch_disposition")),
+        ],
+        value_styles={
+            "Automated Decision": field_value_style,
+            "Final Decision": field_value_emphasis_style if clean(dossier.get("final_status")).upper() == "REJECTED" else field_value_style,
+        },
+    )
 
     add_section("Decision Lifecycle")
     add_kv_block([
@@ -384,26 +597,15 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             elements.append(Spacer(1, 6))
 
         if dossier.get("has_admin_override"):
-            override_reason = ""
-            timeline_for_reason = dossier.get("timeline", []) or []
-
-            for item in reversed(timeline_for_reason):
-                if clean(item.get("type")) == "OVERRIDE":
-                    data = item.get("data", {}) or {}
-                    override_reason = clean(data.get("reason"))
-                    break
-
             elements.append(Paragraph(
                 "Final decision overridden due to governance audit action.",
                 body_style,
             ))
-
             if override_reason:
                 elements.append(Paragraph(
                     f"Reason: {override_reason}",
                     body_style,
                 ))
-
             elements.append(Spacer(1, 6))
 
     timeline = dossier.get("timeline", []) or []
@@ -411,53 +613,63 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         add_section("Event Timeline")
 
         for item in timeline:
-            event_type = clean(item.get("type"))
+            event_type = clean(item.get("type")).upper()
             timestamp = clean(item.get("timestamp"))
             data = item.get("data", {}) or {}
 
-            elements.append(Paragraph(
-                f"<b>{event_type}</b> &nbsp;&nbsp;<font color='#6B7280'>{timestamp}</font>",
-                body_style,
-            ))
-
             if event_type == "DECISION":
+                elements.append(Paragraph(
+                    f"<b>DECISION</b> &nbsp;&nbsp;<font color='#6B7280'>{timestamp}</font>",
+                    body_style,
+                ))
                 detail = (
-                    f"Status: {clean(data.get('status'))} | "
-                    f"Severity: {clean(data.get('severity'))} | "
-                    f"Risk: {clean(data.get('risk_score'))}"
+                    f"<b>Status:</b> {clean(data.get('status'))}<br/>"
+                    f"<b>Severity:</b> {clean(data.get('severity'))}<br/>"
+                    f"<b>Risk:</b> {clean(data.get('risk_score'))}"
                 )
-            elif event_type in {"REVIEW", "OVERRIDE"}:
-                detail = (
-                    f"Action: {clean(data.get('action'))} | "
-                    f"Reviewer: {clean(data.get('reviewer_id'))} | "
-                    f"Reason: {clean(data.get('reason'))}"
-                )
-            else:
-                detail = clean(data)
+                elements.append(Paragraph(detail, timeline_detail_style))
+                elements.append(Spacer(1, 6))
 
-            elements.append(Paragraph(detail, small_style))
-            elements.append(Spacer(1, 6))
+            elif event_type == "OVERRIDE":
+                add_override_event_block(
+                    timestamp=timestamp,
+                    action=clean(data.get("action")),
+                    reviewer=("System" if clean(data.get("reviewer_id")).lower() == "aidentitech" else clean(data.get("reviewer_id")) or "System"),
+                    reason=clean(data.get("reason")),
+                )
+
+            elif event_type == "REVIEW":
+                elements.append(Paragraph(
+                    f"<b>REVIEW</b> &nbsp;&nbsp;<font color='#6B7280'>{timestamp}</font>",
+                    body_style,
+                ))
+                detail = (
+                    f"<b>Action:</b> {clean(data.get('action'))}<br/>"
+                    f"<b>Reviewer:</b> {clean(data.get('reviewer_id'))}<br/>"
+                    f"<b>Reason:</b> {clean(data.get('reason'))}"
+                )
+                elements.append(Paragraph(detail, timeline_detail_style))
+                elements.append(Spacer(1, 6))
+
+            else:
+                elements.append(Paragraph(
+                    f"<b>{event_type}</b> &nbsp;&nbsp;<font color='#6B7280'>{timestamp}</font>",
+                    body_style,
+                ))
+                elements.append(Paragraph(clean(data), timeline_detail_style))
+                elements.append(Spacer(1, 6))
 
     audit = dossier.get("audit", []) or []
     if audit:
-        add_section("Automated Compliance Checks")
+        add_section("Automated Checks (Pre-Audit)")
         add_audit_table(audit)
 
     if dossier.get("has_admin_override"):
         add_section("Governance Decision")
-
-        override_reason = ""
-        timeline_for_reason = dossier.get("timeline", []) or []
-
-        for item in reversed(timeline_for_reason):
-            if clean(item.get("type")) == "OVERRIDE":
-                data = item.get("data", {}) or {}
-                override_reason = clean(data.get("reason"))
-                break
-
         add_kv_block([
             ("Previous Decision", dossier.get("engine_status")),
             ("Final Decision", dossier.get("final_status")),
+            ("Reviewer", "System" if override_reviewer.lower() == "aidentitech" else override_reviewer),
             ("Reason", override_reason),
         ])
 
@@ -469,7 +681,7 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
             ("Latest Ledger Hash", dossier.get("latest_ledger_hash")),
             ("Checkpoint Hash", proof.get("checkpoint_hash")),
             ("Anchor SHA256", proof.get("anchor_sha256")),
-            ("Anchor External Path", normalize_anchor_path(proof.get("anchor_external_path"))),
+            ("Anchor External File", normalize_anchor_filename(proof.get("anchor_external_path"))),
             ("Timestamp Status", proof.get("timestamp_status")),
             ("Timestamp Provider", proof.get("timestamp_provider")),
             ("Timestamp Proof", proof.get("timestamp_proof")),
@@ -486,11 +698,11 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
     elements.append(Spacer(1, 10))
     add_divider()
     elements.append(Paragraph(
-        "Certified by Aidentitech — Cryptographically verifiable compliance record.",
+        f"Certified by {BRAND_NAME} — Cryptographically verifiable compliance record.",
         small_style,
     ))
     elements.append(Paragraph(
-        "This document is generated by Aidentitech and represents a cryptographically verifiable record of a compliance decision.",
+        f"This document is generated by {BRAND_NAME} and represents a cryptographically verifiable record of a compliance decision.",
         small_style,
     ))
     elements.append(Paragraph(
