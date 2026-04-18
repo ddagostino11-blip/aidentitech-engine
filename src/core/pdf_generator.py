@@ -1,6 +1,7 @@
 from io import BytesIO
 import os
 
+import qrcode
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -8,6 +9,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     HRFlowable,
+    Image,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -20,6 +22,25 @@ from src.core.dossier_normalizer import normalize_dossier_payload
 
 BRAND_NAME = "Aidentitech"
 BRAND_SUBTITLE = "Certified Technical Dossier"
+VERIFY_BASE_URL = "https://verify.aidentitech.com"
+
+
+def build_qr_image(data: str, size_mm: int = 28) -> Image:
+    qr = qrcode.QRCode(
+        version=None,
+        box_size=10,
+        border=2,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    return Image(buffer, width=size_mm * mm, height=size_mm * mm)
 
 
 def draw_header_footer(canvas, doc):
@@ -299,7 +320,7 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         r = clean(rule_id).lower()
 
         if any(token in r for token in ["product", "batch", "required_"]):
-            if any(token in r for token in ["temperature"]):
+            if "temperature" in r:
                 return "Temperature Control"
             if any(token in r for token in ["gmp", "deviation", "capa"]):
                 return "Quality & Compliance"
@@ -398,7 +419,7 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         ]
 
         row_index = 0
-        for name, status, kind in rows:
+        for name, status, _kind in rows:
             if name == "__GROUP__":
                 table_rows.append([
                     Paragraph(f"<b>{status.upper()}</b>", small_style),
@@ -471,6 +492,10 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
     decision = dossier.get("decision", {}) or {}
     override_reason = get_override_reason()
     override_reviewer = get_override_reviewer()
+
+    decision_id = clean(dossier.get("decision_id"))
+    dossier_hash = clean(dossier.get("dossier_hash"))
+    verify_url = f"{VERIFY_BASE_URL}/{decision_id}" if decision_id else dossier_hash
 
     banner_left = [
         Paragraph("COMPLIANCE DECISION", badge_title_style),
@@ -694,6 +719,27 @@ def generate_dossier_pdf(dossier: dict) -> BytesIO:
         [("Hash", dossier.get("dossier_hash"))],
         mono_keys={"Hash"},
     )
+
+    add_section("Verification")
+    qr_img = build_qr_image(verify_url)
+
+    qr_table = Table(
+        [[
+            qr_img,
+            Paragraph(
+                f"<b>Scan to verify</b><br/>{verify_url}",
+                small_style,
+            ),
+        ]],
+        colWidths=[32 * mm, 106 * mm],
+    )
+    qr_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(qr_table)
+    elements.append(Spacer(1, 10))
 
     elements.append(Spacer(1, 10))
     add_divider()
