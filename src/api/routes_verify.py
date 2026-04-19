@@ -1,17 +1,20 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 
+import json
+import os
+
 from src.core.db import (
     get_case_by_decision_id,
     get_case_timeline,
     get_case_timeline_from_ledger,
 )
-from src.core.dossier_seal import (
-    build_dossier_payload,
-    compute_dossier_signature,
-)
+from src.core.dossier_seal import build_dossier_payload
+from src.core.crypto_sign import verify_signature
 
 router = APIRouter(tags=["verify"])
+
+SIGNING_PUBLIC_KEY = os.getenv("SIGNING_PUBLIC_KEY", "").strip()
 
 
 def _fmt(value):
@@ -51,9 +54,22 @@ def _compute_signature_validation(case: dict) -> tuple[str | None, bool | None]:
     if not stored_signature:
         return None, None
 
+    if not SIGNING_PUBLIC_KEY:
+        return stored_signature, None
+
     dossier_payload = build_dossier_payload(case)
-    computed_signature = compute_dossier_signature(dossier_payload)
-    return stored_signature, stored_signature == computed_signature
+    payload_bytes = json.dumps(
+        dossier_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    is_valid = verify_signature(
+        SIGNING_PUBLIC_KEY,
+        payload_bytes,
+        stored_signature,
+    )
+    return stored_signature, is_valid
 
 
 def _extract_governance_state(case: dict, timeline: dict | None) -> dict:
@@ -168,6 +184,7 @@ def _build_verify_payload(decision_id: str) -> dict:
         "dossier_hash": case.get("dossier_hash"),
         "signature": signature,
         "signature_valid": signature_valid,
+        "signature_algorithm": case.get("signature_algorithm", "ed25519"),
         "override_reason": governance.get("override_reason"),
         "override_reviewer": governance.get("override_reviewer"),
     }
@@ -390,6 +407,9 @@ def verify_case_view(decision_id: str):
 
               <div class="label">Signature</div>
               <div class="value mono">{signature_value or "Not available"}</div>
+
+              <div class="label">Signature Algorithm</div>
+              <div class="value">{_fmt(data["signature_algorithm"])}</div>
 
               <div class="label">Signature Valid</div>
               <div class="value">{signature_status}</div>

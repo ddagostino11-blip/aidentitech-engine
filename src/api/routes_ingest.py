@@ -17,8 +17,8 @@ from src.core.db import insert_case
 from src.core.dossier_seal import (
     build_dossier_payload,
     compute_dossier_hash,
-    compute_dossier_signature,
 )
+from src.core.crypto_sign import sign_payload
 from src.core.ledger_chain import append_ledger_entry, build_canonical_ledger_data
 
 router = APIRouter(tags=["ingest"])
@@ -26,6 +26,7 @@ router = APIRouter(tags=["ingest"])
 
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip()
 WEBHOOK_TIMEOUT_SECONDS = float(os.getenv("WEBHOOK_TIMEOUT_SECONDS", "3.0"))
+SIGNING_PRIVATE_KEY = os.getenv("SIGNING_PRIVATE_KEY", "").strip()
 
 
 class IngestPharmaRequest(BaseModel):
@@ -205,10 +206,21 @@ def ingest_pharma(
 
         dossier_source = build_dossier_payload(response)
         dossier_hash = compute_dossier_hash(dossier_source)
-        dossier_signature = compute_dossier_signature(dossier_source)
+
+        if not SIGNING_PRIVATE_KEY:
+            raise HTTPException(status_code=500, detail="SIGNING_PRIVATE_KEY not configured")
+
+        dossier_payload_bytes = json.dumps(
+            dossier_source,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+        dossier_signature = sign_payload(SIGNING_PRIVATE_KEY, dossier_payload_bytes)
 
         response["dossier_hash"] = dossier_hash
         response["signature"] = dossier_signature
+        response["signature_algorithm"] = "ed25519"
 
         insert_case({
             "decision_id": decision_id,
@@ -242,6 +254,7 @@ def ingest_pharma(
             "ledger_event_id": ledger_entry.get("event_id"),
             "dossier_hash": dossier_hash,
             "signature": dossier_signature,
+            "signature_algorithm": "ed25519",
             "integration": {
                 "source_system": source_system,
                 "site": site,
