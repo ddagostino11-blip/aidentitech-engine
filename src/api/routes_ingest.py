@@ -14,7 +14,11 @@ from src.core.payload_adapter import normalize_payload
 from src.modules.registry import AVAILABLE_MODULES
 from src.core.module_router import run_module
 from src.core.db import insert_case
-from src.core.dossier_seal import build_dossier_payload, compute_dossier_hash
+from src.core.dossier_seal import (
+    build_dossier_payload,
+    compute_dossier_hash,
+    compute_dossier_signature,
+)
 from src.core.ledger_chain import append_ledger_entry, build_canonical_ledger_data
 
 router = APIRouter(tags=["ingest"])
@@ -132,10 +136,8 @@ def ingest_pharma(
         raw_payload = request.payload or {}
         payload = normalize_payload(raw_payload)
 
-        # validazione delegata al modulo
         validate_module_payload(module_name, payload)
 
-        # context di integrazione: generico, non di dominio
         context = raw_payload.get("context", {}) if isinstance(raw_payload, dict) else {}
 
         source_system = context.get("source_system", "unknown")
@@ -190,6 +192,7 @@ def ingest_pharma(
             "versioning": module_config.get("versioning", {}),
             "compliance_scope": decision.get("compliance_scope", {}),
             "ledger_hash": ledger_entry.get("hash"),
+            "ledger_event_id": ledger_entry.get("event_id"),
             "payload_received": raw_payload,
             "normalized_payload": payload,
             "integration": {
@@ -202,7 +205,10 @@ def ingest_pharma(
 
         dossier_source = build_dossier_payload(response)
         dossier_hash = compute_dossier_hash(dossier_source)
+        dossier_signature = compute_dossier_signature(dossier_source)
+
         response["dossier_hash"] = dossier_hash
+        response["signature"] = dossier_signature
 
         insert_case({
             "decision_id": decision_id,
@@ -215,6 +221,7 @@ def ingest_pharma(
             "payload": payload,
             "full_response": response,
             "dossier_hash": dossier_hash,
+            "signature": dossier_signature,
         })
 
         webhook_payload = {
@@ -232,7 +239,9 @@ def ingest_pharma(
             "batch_disposition": decision.get("batch_disposition"),
             "decision_timestamp": decision_timestamp,
             "ledger_hash": ledger_entry.get("hash"),
+            "ledger_event_id": ledger_entry.get("event_id"),
             "dossier_hash": dossier_hash,
+            "signature": dossier_signature,
             "integration": {
                 "source_system": source_system,
                 "site": site,

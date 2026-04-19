@@ -124,7 +124,8 @@ def _infer_dossier_type(case_context: dict) -> str:
         return "RISK_ANALYSIS_DOSSIER"
 
     return "AUDIT_READY_DOSSIER"
-    
+
+
 def _build_case_dossier_context(case: dict, timeline: dict | None) -> dict:
     timeline_items = (timeline or {}).get("timeline", [])
 
@@ -312,7 +313,8 @@ def export_cases(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=cases_export.csv"},
     )
-    
+
+
 # =========================
 # 3️⃣ LISTA CASI
 # =========================
@@ -448,7 +450,8 @@ def get_case_summary(
     timeline = _get_case_timeline_or_fallback(decision_id)
 
     return _build_case_summary_response(case, timeline)
-    
+
+
 # =========================
 # 8️⃣ REVIEW MANUALE
 # =========================
@@ -474,7 +477,9 @@ def review_case(
             review_action=action,
             reviewer_id=reviewer_id,
             reason=request.reason,
-            metadata={},
+            metadata={
+                "actor_role": auth.get("role"),
+            },
         )
     )
 
@@ -494,6 +499,7 @@ def review_case(
         "reason": request.reason,
         "status": "RECORDED",
         "ledger_hash": ledger_entry.get("hash"),
+        "ledger_event_id": ledger_entry.get("event_id"),
     }
 
 
@@ -548,6 +554,7 @@ def admin_override_case(
             metadata={
                 "override_type": request.override_type,
                 "previous_status": previous_status,
+                "actor_role": auth.get("role"),
             },
         )
     )
@@ -570,6 +577,8 @@ def admin_override_case(
         "previous_status": previous_status,
         "status": "RECORDED",
         "ledger_hash": ledger_entry.get("hash"),
+        "ledger_event_id": ledger_entry.get("event_id"),
+        "actor_role": auth.get("role"),
     }
 
 

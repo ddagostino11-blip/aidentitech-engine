@@ -3,7 +3,8 @@ from fastapi.responses import HTMLResponse
 
 from src.core.db import (
     get_case_by_decision_id,
-    get_latest_review_by_decision_id,
+    get_case_timeline,
+    get_case_timeline_from_ledger,
 )
 from src.core.dossier_seal import (
     build_dossier_payload,
@@ -36,6 +37,15 @@ def _normalize_reviewer(reviewer: str | None) -> str:
     return reviewer
 
 
+def _get_case_timeline_or_fallback(decision_id: str) -> dict | None:
+    timeline = get_case_timeline_from_ledger(decision_id)
+
+    if not timeline:
+        timeline = get_case_timeline(decision_id)
+
+    return timeline
+
+
 def _compute_signature_validation(case: dict) -> tuple[str | None, bool | None]:
     stored_signature = case.get("signature")
     if not stored_signature:
@@ -46,28 +56,93 @@ def _compute_signature_validation(case: dict) -> tuple[str | None, bool | None]:
     return stored_signature, stored_signature == computed_signature
 
 
+def _extract_governance_state(case: dict, timeline: dict | None) -> dict:
+    timeline_items = (timeline or {}).get("timeline", [])
+
+    decision_events = [
+        item for item in timeline_items
+        if item.get("type") == "DECISION"
+    ]
+    review_events = [
+        item for item in timeline_items
+        if item.get("type") == "REVIEW"
+    ]
+    override_events = [
+        item for item in timeline_items
+        if item.get("type") == "OVERRIDE"
+    ]
+    state_change_events = review_events + override_events
+
+    latest_decision = decision_events[-1] if decision_events else None
+    latest_state_change = state_change_events[-1] if state_change_events else None
+    latest_override = override_events[-1] if override_events else None
+    latest_event = timeline_items[-1] if timeline_items else None
+
+    engine_status = (
+        latest_decision.get("data", {}).get("status")
+        if latest_decision
+        else case.get("status")
+    )
+    latest_review_action = (
+        latest_state_change.get("data", {}).get("action")
+        if latest_state_change
+        else None
+    )
+    final_status = latest_review_action or engine_status
+
+    latest_event_timestamp = (
+        latest_event.get("timestamp")
+        if latest_event
+        else case.get("decision_timestamp")
+    )
+
+    override_reason = (
+        latest_override.get("data", {}).get("reason")
+        if latest_override
+        else None
+    )
+    override_reviewer = _normalize_reviewer(
+        latest_override.get("data", {}).get("reviewer_id")
+        if latest_override
+        else None
+    )
+
+    latest_event_type = latest_event.get("type") if latest_event else "DECISION"
+    latest_ledger_hash = (
+        latest_event.get("data", {}).get("ledger_hash")
+        if latest_event
+        else case.get("ledger_hash")
+    )
+    latest_ledger_event_id = (
+        latest_event.get("data", {}).get("ledger_event_id")
+        if latest_event
+        else None
+    )
+
+    return {
+        "engine_status": engine_status,
+        "final_status": final_status,
+        "has_admin_override": len(override_events) > 0,
+        "has_human_review": len(review_events) > 0,
+        "review_count": len(review_events),
+        "override_count": len(override_events),
+        "latest_event_timestamp": latest_event_timestamp,
+        "latest_event_type": latest_event_type,
+        "latest_ledger_hash": latest_ledger_hash,
+        "latest_ledger_event_id": latest_ledger_event_id,
+        "override_reason": override_reason,
+        "override_reviewer": override_reviewer,
+    }
+
+
 def _build_verify_payload(decision_id: str) -> dict:
     case = get_case_by_decision_id(decision_id)
 
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    latest_review = get_latest_review_by_decision_id(decision_id)
-
-    engine_status = case.get("status")
-    final_status = latest_review.get("action") if latest_review else engine_status
-    has_admin_override = bool(latest_review)
-
-    latest_event_timestamp = (
-        latest_review.get("created_at")
-        if latest_review
-        else case.get("decision_timestamp")
-    )
-
-    override_reason = latest_review.get("reason") if latest_review else None
-    override_reviewer = _normalize_reviewer(
-        latest_review.get("reviewer_id") if latest_review else None
-    )
+    timeline = _get_case_timeline_or_fallback(decision_id)
+    governance = _extract_governance_state(case, timeline)
 
     signature, signature_valid = _compute_signature_validation(case)
 
@@ -76,19 +151,25 @@ def _build_verify_payload(decision_id: str) -> dict:
         "decision_id": case.get("decision_id"),
         "client_id": case.get("client_id"),
         "module": case.get("module"),
-        "engine_status": engine_status,
-        "final_status": final_status,
+        "engine_status": governance.get("engine_status"),
+        "final_status": governance.get("final_status"),
         "severity": case.get("severity"),
         "risk_score": case.get("risk_score"),
         "decision_code": case.get("decision_code"),
-        "has_admin_override": has_admin_override,
-        "latest_event_timestamp": latest_event_timestamp,
-        "ledger_hash": case.get("ledger_hash"),
+        "has_admin_override": governance.get("has_admin_override"),
+        "has_human_review": governance.get("has_human_review"),
+        "review_count": governance.get("review_count"),
+        "override_count": governance.get("override_count"),
+        "latest_event_timestamp": governance.get("latest_event_timestamp"),
+        "latest_event_type": governance.get("latest_event_type"),
+        "latest_ledger_hash": governance.get("latest_ledger_hash"),
+        "latest_ledger_event_id": governance.get("latest_ledger_event_id"),
+        "ledger_hash": governance.get("latest_ledger_hash"),
         "dossier_hash": case.get("dossier_hash"),
         "signature": signature,
         "signature_valid": signature_valid,
-        "override_reason": override_reason,
-        "override_reviewer": override_reviewer,
+        "override_reason": governance.get("override_reason"),
+        "override_reviewer": governance.get("override_reviewer"),
     }
 
 
@@ -276,8 +357,20 @@ def verify_case_view(decision_id: str):
               <div class="label">Risk Score</div>
               <div class="value">{_fmt(data["risk_score"])}</div>
 
-              <div class="label">Override</div>
+              <div class="label">Human Review</div>
+              <div class="value">{_fmt_bool(data["has_human_review"])}</div>
+
+              <div class="label">Admin Override</div>
               <div class="value">{_fmt_bool(data["has_admin_override"])}</div>
+
+              <div class="label">Review Count</div>
+              <div class="value">{_fmt(data["review_count"])}</div>
+
+              <div class="label">Override Count</div>
+              <div class="value">{_fmt(data["override_count"])}</div>
+
+              <div class="label">Latest Event Type</div>
+              <div class="value">{_fmt(data["latest_event_type"])}</div>
 
               <div class="label">Timestamp</div>
               <div class="value mono">{_fmt(data["latest_event_timestamp"])}</div>
@@ -286,8 +379,11 @@ def verify_case_view(decision_id: str):
 
           <div class="section">
             <div class="grid">
-              <div class="label">Ledger Hash</div>
-              <div class="value mono">{_fmt(data["ledger_hash"])}</div>
+              <div class="label">Latest Ledger Hash</div>
+              <div class="value mono">{_fmt(data["latest_ledger_hash"])}</div>
+
+              <div class="label">Latest Ledger Event ID</div>
+              <div class="value mono">{_fmt(data["latest_ledger_event_id"])}</div>
 
               <div class="label">Dossier Hash</div>
               <div class="value mono">{_fmt(data["dossier_hash"])}</div>

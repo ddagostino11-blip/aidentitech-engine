@@ -122,9 +122,22 @@ def init_db():
                 payload JSONB,
                 full_response JSONB,
                 dossier_hash TEXT,
+                signature TEXT,
                 created_at TIMESTAMPTZ
             )
         """)
+
+        if not _column_exists_postgres(cursor, "cases", "dossier_hash"):
+            cursor.execute("""
+                ALTER TABLE cases
+                ADD COLUMN dossier_hash TEXT
+            """)
+
+        if not _column_exists_postgres(cursor, "cases", "signature"):
+            cursor.execute("""
+                ALTER TABLE cases
+                ADD COLUMN signature TEXT
+            """)
 
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_cases_created_at
@@ -171,6 +184,8 @@ def init_db():
                 action TEXT,
                 reason TEXT,
                 ledger_hash TEXT,
+                actor_role TEXT,
+                ledger_event_id TEXT,
                 created_at TIMESTAMPTZ
             )
         """)
@@ -179,6 +194,18 @@ def init_db():
             cursor.execute("""
                 ALTER TABLE review_actions
                 ADD COLUMN ledger_hash TEXT
+            """)
+
+        if not _column_exists_postgres(cursor, "review_actions", "actor_role"):
+            cursor.execute("""
+                ALTER TABLE review_actions
+                ADD COLUMN actor_role TEXT
+            """)
+
+        if not _column_exists_postgres(cursor, "review_actions", "ledger_event_id"):
+            cursor.execute("""
+                ALTER TABLE review_actions
+                ADD COLUMN ledger_event_id TEXT
             """)
 
         cursor.execute("""
@@ -212,6 +239,12 @@ def init_db():
         cursor.execute("""
             ALTER TABLE cases
             ADD COLUMN dossier_hash TEXT
+        """)
+
+    if not _column_exists_sqlite(cursor, "cases", "signature"):
+        cursor.execute("""
+            ALTER TABLE cases
+            ADD COLUMN signature TEXT
         """)
 
     cursor.execute("""
@@ -259,6 +292,8 @@ def init_db():
             action TEXT,
             reason TEXT,
             ledger_hash TEXT,
+            actor_role TEXT,
+            ledger_event_id TEXT,
             created_at TEXT
         )
     """)
@@ -267,6 +302,18 @@ def init_db():
         cursor.execute("""
             ALTER TABLE review_actions
             ADD COLUMN ledger_hash TEXT
+        """)
+
+    if not _column_exists_sqlite(cursor, "review_actions", "actor_role"):
+        cursor.execute("""
+            ALTER TABLE review_actions
+            ADD COLUMN actor_role TEXT
+        """)
+
+    if not _column_exists_sqlite(cursor, "review_actions", "ledger_event_id"):
+        cursor.execute("""
+            ALTER TABLE review_actions
+            ADD COLUMN ledger_event_id TEXT
         """)
 
     cursor.execute("""
@@ -527,9 +574,10 @@ def insert_case(data: dict):
                 payload,
                 full_response,
                 dossier_hash,
+                signature,
                 created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             data.get("decision_id"),
             data.get("client_id"),
@@ -541,6 +589,7 @@ def insert_case(data: dict):
             Json(data.get("payload")),
             Json(data.get("full_response")),
             data.get("dossier_hash"),
+            data.get("signature"),
             created_at,
         ))
     else:
@@ -557,9 +606,10 @@ def insert_case(data: dict):
                 payload,
                 full_response,
                 dossier_hash,
+                signature,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("decision_id"),
             data.get("client_id"),
@@ -571,6 +621,7 @@ def insert_case(data: dict):
             json.dumps(data.get("payload")),
             json.dumps(data.get("full_response")),
             data.get("dossier_hash"),
+            data.get("signature"),
             created_at,
         ))
 
@@ -586,7 +637,7 @@ def get_cases(client_id: str | None = None, status: str | None = None, limit: in
         query = """
             SELECT id, decision_id, client_id, module,
                    status, severity, risk_score,
-                   decision_code, dossier_hash, created_at
+                   decision_code, dossier_hash, signature, created_at
             FROM cases
         """
         conditions = []
@@ -611,7 +662,7 @@ def get_cases(client_id: str | None = None, status: str | None = None, limit: in
         query = """
             SELECT id, decision_id, client_id, module,
                    status, severity, risk_score,
-                   decision_code, dossier_hash, created_at
+                   decision_code, dossier_hash, signature, created_at
             FROM cases
         """
         conditions = []
@@ -647,7 +698,7 @@ def get_case_by_decision_id(decision_id: str):
     if _is_postgres():
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT full_response, dossier_hash
+            SELECT full_response, dossier_hash, signature
             FROM cases
             WHERE decision_id = %s
             LIMIT 1
@@ -655,7 +706,7 @@ def get_case_by_decision_id(decision_id: str):
     else:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT full_response, dossier_hash
+            SELECT full_response, dossier_hash, signature
             FROM cases
             WHERE decision_id = ?
             LIMIT 1
@@ -669,6 +720,7 @@ def get_case_by_decision_id(decision_id: str):
 
     case = row["full_response"] if _is_postgres() else json.loads(row["full_response"])
     case["dossier_hash"] = row["dossier_hash"]
+    case["signature"] = row.get("signature")
     return case
 
 
@@ -679,7 +731,7 @@ def get_latest_review_by_decision_id(decision_id: str):
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT id, decision_id, client_id, reviewer_id,
-                   action, reason, ledger_hash, created_at
+                   action, reason, ledger_hash, actor_role, ledger_event_id, created_at
             FROM review_actions
             WHERE decision_id = %s
             ORDER BY id DESC
@@ -689,7 +741,7 @@ def get_latest_review_by_decision_id(decision_id: str):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, decision_id, client_id, reviewer_id,
-                   action, reason, ledger_hash, created_at
+                   action, reason, ledger_hash, actor_role, ledger_event_id, created_at
             FROM review_actions
             WHERE decision_id = ?
             ORDER BY id DESC
@@ -716,7 +768,12 @@ def _build_case_summary(row: dict) -> dict:
 
     engine_status = full_response.get("status")
     final_status = latest_review["action"] if latest_review else engine_status
-    review_state = "REVIEWED" if latest_review else "PENDING"
+
+    if latest_review:
+        actor_role = latest_review.get("actor_role")
+        review_state = "OVERRIDDEN" if actor_role == "super_admin" else "REVIEWED"
+    else:
+        review_state = "PENDING"
 
     return {
         "id": row["id"],
@@ -731,6 +788,7 @@ def _build_case_summary(row: dict) -> dict:
         "risk_score": full_response.get("risk_score"),
         "decision_code": full_response.get("decision_code"),
         "dossier_hash": row.get("dossier_hash"),
+        "signature": row.get("signature"),
         "created_at": str(row["created_at"]),
     }
 
@@ -753,7 +811,7 @@ def get_case_summaries(
         placeholder = "?"
 
     query = f"""
-        SELECT id, full_response, dossier_hash, created_at
+        SELECT id, full_response, dossier_hash, signature, created_at
         FROM cases
         WHERE client_id = {placeholder}
     """
@@ -792,6 +850,8 @@ def insert_review_action(
     action: str,
     reason: str | None = None,
     ledger_hash: str | None = None,
+    actor_role: str | None = None,
+    ledger_event_id: str | None = None,
 ):
     conn = get_connection()
     created_at = _utc_now_iso()
@@ -806,9 +866,11 @@ def insert_review_action(
                 action,
                 reason,
                 ledger_hash,
+                actor_role,
+                ledger_event_id,
                 created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             decision_id,
             client_id,
@@ -816,6 +878,8 @@ def insert_review_action(
             action,
             reason,
             ledger_hash,
+            actor_role,
+            ledger_event_id,
             created_at,
         ))
     else:
@@ -828,9 +892,11 @@ def insert_review_action(
                 action,
                 reason,
                 ledger_hash,
+                actor_role,
+                ledger_event_id,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             decision_id,
             client_id,
@@ -838,6 +904,8 @@ def insert_review_action(
             action,
             reason,
             ledger_hash,
+            actor_role,
+            ledger_event_id,
             created_at,
         ))
 
@@ -852,7 +920,7 @@ def get_reviews_by_decision_id(decision_id: str):
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT id, decision_id, client_id, reviewer_id,
-                   action, reason, ledger_hash, created_at
+                   action, reason, ledger_hash, actor_role, ledger_event_id, created_at
             FROM review_actions
             WHERE decision_id = %s
             ORDER BY id DESC
@@ -861,7 +929,7 @@ def get_reviews_by_decision_id(decision_id: str):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, decision_id, client_id, reviewer_id,
-                   action, reason, ledger_hash, created_at
+                   action, reason, ledger_hash, actor_role, ledger_event_id, created_at
             FROM review_actions
             WHERE decision_id = ?
             ORDER BY id DESC
@@ -898,15 +966,22 @@ def get_case_timeline(decision_id: str):
     })
 
     for review in reviews:
+        actor_role = review.get("actor_role")
+        event_type = "OVERRIDE" if actor_role == "super_admin" else "REVIEW"
+
+        event_data = {
+            "action": review.get("action"),
+            "reason": review.get("reason"),
+            "reviewer_id": review.get("reviewer_id"),
+            "ledger_hash": review.get("ledger_hash"),
+            "actor_role": actor_role,
+            "ledger_event_id": review.get("ledger_event_id"),
+        }
+
         timeline.append({
-            "type": "REVIEW",
+            "type": event_type,
             "timestamp": review.get("created_at"),
-            "data": {
-                "action": review.get("action"),
-                "reason": review.get("reason"),
-                "reviewer_id": review.get("reviewer_id"),
-                "ledger_hash": review.get("ledger_hash"),
-            }
+            "data": event_data,
         })
 
     timeline = sorted(
@@ -926,6 +1001,7 @@ def _base_normalized_ledger_entry(entry: dict) -> dict:
     metadata = data.get("metadata") or {}
 
     return {
+        "event_id": entry.get("event_id"),
         "timestamp": entry.get("timestamp"),
         "event_type": None,
         "decision_id": data.get("decision_id"),
@@ -943,6 +1019,7 @@ def _base_normalized_ledger_entry(entry: dict) -> dict:
         "raw_event_type": data.get("event_type"),
         "override_type": metadata.get("override_type"),
         "previous_status": metadata.get("previous_status"),
+        "actor_role": metadata.get("actor_role"),
     }
 
 
@@ -1036,6 +1113,8 @@ def _build_timeline_event_from_normalized_entry(normalized: dict) -> dict | None
                 "reviewer_id": normalized.get("reviewer_id"),
                 "ledger_hash": normalized.get("ledger_hash"),
                 "source_format": normalized.get("source_format"),
+                "actor_role": normalized.get("actor_role"),
+                "ledger_event_id": normalized.get("event_id"),
             }
         }
 
@@ -1051,6 +1130,8 @@ def _build_timeline_event_from_normalized_entry(normalized: dict) -> dict | None
                 "source_format": normalized.get("source_format"),
                 "override_type": normalized.get("override_type"),
                 "previous_status": normalized.get("previous_status"),
+                "actor_role": normalized.get("actor_role"),
+                "ledger_event_id": normalized.get("event_id"),
             }
         }
 
@@ -1065,6 +1146,7 @@ def _build_timeline_event_from_normalized_entry(normalized: dict) -> dict | None
                 "decision_code": normalized.get("decision_code"),
                 "ledger_hash": normalized.get("ledger_hash"),
                 "source_format": normalized.get("source_format"),
+                "ledger_event_id": normalized.get("event_id"),
             }
         }
 

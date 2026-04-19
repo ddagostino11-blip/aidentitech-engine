@@ -103,6 +103,7 @@ def _base_normalized_entry(entry: dict) -> dict:
     metadata = data.get("metadata") or {}
 
     return {
+        "event_id": entry.get("event_id"),
         "timestamp": entry.get("timestamp"),
         "event_type": None,
         "decision_id": data.get("decision_id"),
@@ -121,6 +122,7 @@ def _base_normalized_entry(entry: dict) -> dict:
         "raw_event_type": data.get("event_type"),
         "override_type": metadata.get("override_type"),
         "previous_status": metadata.get("previous_status"),
+        "actor_role": metadata.get("actor_role"),
     }
 
 
@@ -272,6 +274,8 @@ def _build_ledger_summary(normalized_entries: list[dict], decision_id: str) -> d
         "latest_event_timestamp": latest_event.get("timestamp"),
         "latest_ledger_hash": latest_event.get("ledger_hash"),
         "latest_source_format": latest_event.get("source_format"),
+        "latest_event_id": latest_event.get("event_id"),
+        "latest_actor_role": latest_event.get("actor_role"),
     }
 
 

@@ -39,6 +39,12 @@ ALLOWED_SEVERITIES = {
     "CRITICAL",
 }
 
+ALLOWED_ACTOR_ROLES = {
+    "reviewer",
+    "admin",
+    "super_admin",
+}
+
 CANONICAL_LEDGER_KEYS = [
     "event_type",
     "decision_id",
@@ -64,7 +70,11 @@ def _hash_bytes(content: bytes) -> str:
 
 
 def _hash_record(record: dict) -> str:
-    record_str = json.dumps(record, sort_keys=True).encode()
+    record_str = json.dumps(
+        record,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
     return hashlib.sha256(record_str).hexdigest()
 
 
@@ -127,6 +137,11 @@ def _normalize_metadata(metadata: dict | None) -> dict:
 
     if not isinstance(metadata, dict):
         raise ValueError("metadata must be a dict")
+
+    try:
+        json.dumps(metadata)
+    except Exception:
+        raise ValueError("metadata must be JSON serializable")
 
     return metadata
 
@@ -219,6 +234,15 @@ def build_canonical_ledger_data(
         if not reviewer_id:
             raise ValueError("reviewer_id required for HUMAN_REVIEW")
 
+        actor_role = metadata.get("actor_role")
+        if not actor_role:
+            raise ValueError("actor_role required in metadata for HUMAN_REVIEW")
+        if actor_role not in ALLOWED_ACTOR_ROLES:
+            raise ValueError(
+                f"Invalid actor_role: {actor_role}. "
+                f"Allowed values: {sorted(ALLOWED_ACTOR_ROLES)}"
+            )
+
     if event_type == EVENT_TYPE_ADMIN_OVERRIDE:
         if not decision_id:
             raise ValueError("decision_id required for ADMIN_OVERRIDE")
@@ -238,6 +262,15 @@ def build_canonical_ledger_data(
 
         if "previous_status" not in metadata:
             raise ValueError("previous_status required in metadata")
+
+        actor_role = metadata.get("actor_role")
+        if not actor_role:
+            raise ValueError("actor_role required in metadata for ADMIN_OVERRIDE")
+        if actor_role not in ALLOWED_ACTOR_ROLES:
+            raise ValueError(
+                f"Invalid actor_role: {actor_role}. "
+                f"Allowed values: {sorted(ALLOWED_ACTOR_ROLES)}"
+            )
 
     canonical_status = (
         review_action
@@ -276,6 +309,11 @@ def _is_canonical_ledger_data(data: dict) -> bool:
     if not isinstance(data.get("metadata"), dict):
         return False
 
+    if event_type in {EVENT_TYPE_HUMAN_REVIEW, EVENT_TYPE_ADMIN_OVERRIDE}:
+        actor_role = data.get("metadata", {}).get("actor_role")
+        if actor_role not in ALLOWED_ACTOR_ROLES:
+            return False
+
     return True
 
 
@@ -290,6 +328,7 @@ def append_ledger_entry(data: dict) -> dict:
         raise ValueError("Invalid previous hash state")
 
     entry = {
+        "event_id": str(uuid.uuid4()),
         "timestamp": _utc_now_iso(),
         "data": data,
         "prev_hash": prev_hash,
@@ -348,10 +387,17 @@ def verify_chain() -> bool:
     for line in lines:
         record = json.loads(line)
 
+        if "event_id" not in record:
+            return False
+
         if record.get("prev_hash") != prev_hash:
             return False
 
+        if not _is_canonical_ledger_data(record.get("data")):
+            return False
+
         record_copy = {
+            "event_id": record["event_id"],
             "timestamp": record["timestamp"],
             "data": record["data"],
             "prev_hash": record["prev_hash"],
